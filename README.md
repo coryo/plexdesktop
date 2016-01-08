@@ -1,6 +1,8 @@
 # plexdesktop
 a basic plex client using pyqt5, libmpv, [python-mpv](https://github.com/jaseg/python-mpv). Only running on windows x86 currently.
 
+![img](http://i.imgur.com/NDLPWuD.png)
+
 ### Requires
  * python 3.4
  * pyqt5
