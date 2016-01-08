@@ -24,6 +24,7 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.user.setText(settings.value('user'))
         self.password.setText(settings.value('password'))
         self.loadSession()
+        self.btn_browser.setEnabled(True)
 
     def loadSession(self):
         settings = Settings()

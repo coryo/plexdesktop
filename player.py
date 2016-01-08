@@ -147,7 +147,7 @@ class MPVPlayer(QWidget, player_ui.Ui_Player, mpv.MPV):
     #         self.move(self.mapToGlobal(event.pos() - self.pos_offset))
 
     def mouseDoubleClickEvent(self, event):
-        print(self.windowHandle().screen())
+        #print(self.windowHandle().screen())
         if not self.isFullScreen():
             self.windowHandle().setScreen(self.windowHandle().screen())
             self.showFullScreen()
