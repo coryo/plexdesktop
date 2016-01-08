@@ -1,0 +1,3 @@
+[submodule "plexdevices"]
+	path = plexdevices
+	url = https://github.com/coryo/plexdevices.git
