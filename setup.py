@@ -17,11 +17,11 @@ options = {
 }
 
 executables = [
-    Executable('main.py', base=base, targetName='plexclient.exe')
+    Executable('main.py', base=base, targetName='plexdesktop.exe')
 ]
 
 setup(
-    name="plexclient",
+    name="plexdesktop",
     version="0.1",
     description="Plex Desktop Client",
     options=options,

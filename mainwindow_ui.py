@@ -49,7 +49,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "DesktopClient for Plex"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "plexdesktop"))
         self.btn_login.setText(_translate("MainWindow", "Login"))
         self.user.setPlaceholderText(_translate("MainWindow", "username"))
         self.btn_launch.setText(_translate("MainWindow", "Remote"))
