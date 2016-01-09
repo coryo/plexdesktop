@@ -2,15 +2,16 @@ import os
 import subprocess
 import math
 import threading
-from PyQt5.QtWidgets import QWidget, QAction
+from PyQt5.QtWidgets import QWidget, QAction, QMenu
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 import browser_ui
 from browserlist import BrowserList, BrowserListItem
 from settings import Settings
 from player import MPVPlayer
+import plexdevices
 
 class ContainerWorker(QObject):
-    done = pyqtSignal(dict)
+    done = pyqtSignal(plexdevices.MediaContainer)
     finished = pyqtSignal(str)
 
     def __init__(self, server, key, page=0, size=20):
@@ -21,9 +22,8 @@ class ContainerWorker(QObject):
         self.size = size
 
     def run(self):
-        data = self.server.container(self.key, page=self.page, size=self.size)
-        # print(data)
-        self.done.emit(data)
+        container = self.server.media_container(self.key, page=self.page, size=self.size)
+        self.done.emit(container)
         self.finished.emit(self.key)
 
 
@@ -55,15 +55,59 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         self.list.verticalScrollBar().valueChanged.connect(self.endless_scroll)
         self.zoom.sliderMoved.connect(self.list.icon_size)
 
-        self.watched_action = QAction('mark watched', self)
-        self.unwatched_action = QAction('mark unwatched', self)
-        self.watched_action.triggered.connect(self.mark_watched)
-        self.unwatched_action.triggered.connect(self.mark_unwatched)
-        self.list.addAction(self.watched_action)
-        self.list.addAction(self.unwatched_action)
+        self.list.customContextMenuRequested.connect(self.context_menu)
 
         self.data(key=self.location)
         self.show()
+
+    def context_menu(self, pos):
+        item = self.list.currentItem()
+        print('[{}] {}: {}'.format(item.media['_elementType'],
+                                   item.media.parent.get('identifier'),
+                                   item.media['title']))
+        menu = QMenu(self)
+        if item.media.playable:
+            play_action = QAction('play', menu)
+            play_action.triggered.connect(self.action_play)
+            menu.addAction(play_action)
+        else:
+            open_action = QAction('open', menu)
+            open_action.triggered.connect(self.action_open)
+            menu.addAction(open_action)
+        if item.media.markable:
+            watched_action = QAction('mark watched', menu)
+            unwatched_action = QAction('mark unwatched', menu)
+            watched_action.triggered.connect(self.action_mark_watched)
+            unwatched_action.triggered.connect(self.action_mark_unwatched)
+            menu.addAction(watched_action)
+            menu.addAction(unwatched_action)
+
+        if not menu.isEmpty():
+            menu.popup(self.mapToGlobal(pos))
+
+    def action_play(self):
+        self.play_list_item(self.list.currentItem())
+
+    def action_open(self):
+        self.data(item=self.list.currentItem())
+
+    def action_mark_watched(self):
+        item = self.list.currentItem()
+        if item.media.markable:
+            item.media.mark_watched()
+            item.clear_bg()
+
+    def action_mark_unwatched(self):
+        item = self.list.currentItem()
+        if item.media.markable:
+            item.media.mark_unwatched()
+            item.clear_bg()
+
+    def create_player(self):
+        self.mpvplayer = MPVPlayer()
+
+    def destroy_player(self):
+        self.mpvplayer = None
 
     def closeEvent(self, event):
         self.thread.quit()
@@ -90,14 +134,21 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             self.history.pop()
             self.data(key=self.history[-1], history=False)
 
+    def play_list_item(self, item):
+        if self.mpvplayer is not None:
+            self.mvpplayer.close()
+        self.create_player()
+        self.mpvplayer.player_stopped.connect(self.destroy_player)
+        self.mpvplayer.player_stopped.connect(item.update_offset)
+        self.mpvplayer.play(item.media)
+
     def data(self, item=None, key=None, history=True):
         if item is not None:
-            key = item['key'] if item['key'].startswith('/') else self.location+'/'+item['key']
+            key = item.media['key'] if item.media['key'].startswith('/') else self.location+'/'+item.media['key']
         print(key)
 
-        if item is not None and item['_elementType'] in ['Video', 'Track']:
-            self.play_item(item)
-            self.playing = item
+        if item is not None and item.media['_elementType'] in ['Video', 'Track']:
+            self.play_list_item(item)
             return
 
         self.list.clear()
@@ -132,67 +183,16 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         except KeyError:
             pass
 
-    def update_list(self, data):
-        for item in data['_children']:
-            self.list.addItem(BrowserListItem(self.server, data, item, self.list))
-
-        self.total_pages = math.ceil(data['totalSize']/self.container_size)
-        self.title1 = data.get('title1', self.location.split('/')[-2])
-        self.title2 = data.get('title2', self.location.split('/')[-1])
+    def update_list(self, container):
+        self.list.add_container(container)
+        self.total_pages = math.ceil(container['totalSize']/self.container_size)
         self.list.refresh_icons()
         self.update_title()
-        self.update_path()
+        self.update_path(container.get('title1', self.location.split('/')[-2]),
+                         container.get('title2', self.location.split('/')[-1]))
 
-    def update_path(self):
-        self.lbl_path.setText('{} / {}'.format(self.title1, self.title2))
+    def update_path(self, t1, t2):
+        self.lbl_path.setText('{} / {}'.format(t1, t2))
 
     def update_title(self):
         self.setWindowTitle('{}: {}'.format(self.server.name, self.location))
-
-    def play_item(self, item):
-        parts = [part['key'] for part in item['_children'][0]['_children']]
-        offset = int(item.get('viewOffset', 0))
-        key = parts[0]
-
-        if key.startswith('/system/services/'):
-            data = self.server.container(key)
-            key = data['_children'][0]['key']
-
-        if key.startswith('/:/'):
-            data = self.server.container(key)
-            print(data)
-            key = data['_children'][0]['key']
-            print(key)
-            url = key
-        else:
-            url = '{}{}?X-Plex-Token={}'.format(self.server.active.url, key, self.server.access_token)
-
-        item.data['key'] = key
-        self.mpvplayer = MPVPlayer()
-        self.mpvplayer.player_stopped.connect(self.player_done)
-        self.mpvplayer._play(url, item)
-
-    def player_done(self, offset):
-        print('player_done')
-        if 'ratingKey' in self.playing.data:
-            self.server.set_view_offset(self.playing['ratingKey'], offset)
-        self.playing.update_offset(offset)
-        self.playing = None
-        del self.mpvplayer
-        self.mpvplayer = None
-
-    def mark_watched(self):
-        items = self.list.selectedItems()
-        for item in items:
-            if 'ratingKey' not in item.data:
-                continue
-            self.server.mark_watched(item['ratingKey'])
-            item.clear_bg()
-
-    def mark_unwatched(self):
-        items = self.list.selectedItems()
-        for item in items:
-            if 'ratingKey' not in item.data:
-                continue
-            self.server.mark_unwatched(item['ratingKey'])
-            item.clear_bg()

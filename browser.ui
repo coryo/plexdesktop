@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>386</width>
+    <width>424</width>
     <height>314</height>
    </rect>
   </property>
@@ -56,7 +56,7 @@
    <item row="4" column="0">
     <widget class="BrowserList" name="list">
      <property name="contextMenuPolicy">
-      <enum>Qt::ActionsContextMenu</enum>
+      <enum>Qt::CustomContextMenu</enum>
      </property>
     </widget>
    </item>

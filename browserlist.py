@@ -11,6 +11,8 @@ class BrowserList(QListWidget):
     def __init__(self, parent=None):
         super().__init__()
         self.setIconSize(QSize(32, 32))
+        self.current_container = None
+        self.server = None
         self.thumb_thread = QThread()
         self.thumb_thread.start()
 
@@ -28,55 +30,60 @@ class BrowserList(QListWidget):
     def closeEvent(self, event):
         self.thumb_thread.quit()
 
+    def resizeEvent(self, event):
+        self.resize_signal.emit()
+
+    def add_container(self, container):
+        self.current_container = container
+        self.server = container.server
+        for media_object in container.children:
+            self.addItem(BrowserListItem(media_object, parent=self))
+
 
 class BrowserListItem(QListWidgetItem):
 
-    def __init__(self, server, container, item, parent=None):
+    def __init__(self, media_object, parent=None):
         super(BrowserListItem, self).__init__(parent)
-        self.server = server
-        self.data = item
+        self.media = media_object
+
         self.thumb = None
         self.parent = parent
+        self.worker = None
         self.parent.iconSizeChanged.connect(self.resize)
         self.parent.resize_signal.connect(self.update_bg)
-        if item.get('thumb', False):
-            self.worker = ImgWorker(server, item['thumb'], self)
+
+        if self.media.get('thumb', False):
+            self.worker = ImgWorker(parent.server, self.media['thumb'], self)
             self.worker.signal.connect(self.update_img)
             self.worker.finished.connect(self._finished)
             self.worker.moveToThread(self.parent.thumb_thread)
             self.parent.operate.connect(self.worker.run)
-        if item.get('type', None) == 'episode':
-            if 'grandparentTitle' in item and 'parentIndex' in item:
-                title = '{} - s{}e{} - {}'.format(item.get('grandparentTitle', ''), item['parentIndex'], item['index'], item['title'])
+        if self.media.get('type', None) == 'episode':
+            if 'grandparentTitle' in self.media and 'parentIndex' in self.media:
+                title = '{} - s{}e{} - {}'.format(self.media.get('grandparentTitle', ''), self.media['parentIndex'], self.media['index'], self.media['title'])
             else:
                 try:
-                    ep = 's{:02d}e{:02d}'.format(int(container['parentIndex']), int(item['index']))
-                    title = ep + ' - ' + item['title']
+                    ep = 's{:02d}e{:02d}'.format(int(container['parentIndex']), int(self.media['index']))
+                    title = ep + ' - ' + self.media['title']
                 except Exception:
-                    title = item['title']
+                    title = self.media['title']
         else:
-            title = item['title']
+            title = self.media['title']
         self.setText(title)
         self.update_bg()
 
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def get(self, key, default=None):
-        try:
-            return self.data[key]
-        except Exception:
-            return default
-
     def _finished(self):
-        del self.worker
+        try:
+            del self.worker
+        except Exception:
+            pass
 
     def update_bg(self, offset=None):
-        if 'viewOffset' not in self.data or 'duration' not in self.data:
+        if 'viewOffset' not in self.media or 'duration' not in self.media:
             return
         try:
-            x = int(int(self.data['viewOffset'] if offset is None else offset)/int(self.data['duration'])*100)
-            xpm = ["100 1 2 1", # 100x1 image
+            x = int(int(self.media['viewOffset'] if offset is None else offset)/int(self.media['duration'])*100)
+            xpm = ["100 1 2 1",   # 100x1 image
                    "a c #EEEEEE", # dark color
                    "b c #FFFFFF", # light color
                    "a"*x + "b"*(100-x)
@@ -86,8 +93,7 @@ class BrowserListItem(QListWidgetItem):
             print(str(e))
 
     def update_offset(self, offset):
-        self.data['viewOffset'] = offset
-        self.update_bg(offset=offset)
+        self.update_bg(offset)
 
     def clear_bg(self):
         self.setBackground(QBrush(QColor(255, 255, 255)))

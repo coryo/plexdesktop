@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Browser(object):
     def setupUi(self, Browser):
         Browser.setObjectName("Browser")
-        Browser.resize(386, 314)
+        Browser.resize(424, 314)
         self.gridLayout = QtWidgets.QGridLayout(Browser)
         self.gridLayout.setObjectName("gridLayout")
         self.horizontalLayout = QtWidgets.QHBoxLayout()
@@ -33,7 +33,7 @@ class Ui_Browser(object):
         self.horizontalLayout.addWidget(self.btn_channels)
         self.gridLayout.addLayout(self.horizontalLayout, 2, 0, 1, 1)
         self.list = BrowserList(Browser)
-        self.list.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)
+        self.list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list.setObjectName("list")
         self.gridLayout.addWidget(self.list, 4, 0, 1, 1)
         self.zoom = QtWidgets.QSlider(Browser)
