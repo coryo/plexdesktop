@@ -10,7 +10,7 @@ from warnings import warn
 if os.name == 'nt':
     backend = CDLL('mpv/win32/mpv-1')
 else:
-    backend = CDLL('libmpv.so')
+    backend = CDLL('libmpv.so.1')
 
 
 class MpvHandle(c_void_p):
@@ -313,6 +313,8 @@ class MPV:
 
     # def __del__(self):
     #     _mpv_terminate_destroy(self.handle)
+    def terminate_destroy(self):
+        _mpv_terminate_destroy(self.handle)
 
     def command(self, name, *args):
         """ Execute a raw command """
