@@ -109,6 +109,15 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             open_action.triggered.connect(self.action_open)
             menu.addAction(open_action)
 
+        if item.media.has_parent:
+            open_action = QAction('goto parent', menu)
+            open_action.triggered.connect(self.action_open_parent)
+            menu.addAction(open_action)
+        if item.media.has_grandparent:
+            open_action = QAction('goto grandparent', menu)
+            open_action.triggered.connect(self.action_open_grandparent)
+            menu.addAction(open_action)
+
         if item.media.markable:
             watched_action = QAction('mark watched', menu)
             unwatched_action = QAction('mark unwatched', menu)
@@ -131,6 +140,12 @@ class Browser(QWidget, browser_ui.Ui_Browser):
 
     def action_open(self):
         self.data(item=self.list.currentItem())
+
+    def action_open_parent(self):
+        self.data(key=self.list.currentItem().media['parentKey'] + '/children')
+
+    def action_open_grandparent(self):
+        self.data(key=self.list.currentItem().media['grandparentKey'] + '/children')
 
     def action_mark_watched(self):
         item = self.list.currentItem()
@@ -177,19 +192,33 @@ class Browser(QWidget, browser_ui.Ui_Browser):
 
     def play_list_item(self, item):
         if self.mpvplayer is not None:
-            self.mvpplayer.close()
+            self.mpvplayer.close()
         self.create_player()
         self.mpvplayer.player_stopped.connect(self.destroy_player)
         self.mpvplayer.player_stopped.connect(item.update_offset)
         self.mpvplayer.play(item.media)
+        # self.layout().addWidget(self.mpvplayer)
 
     def play_list_item_photo(self, item):
         self.image_viewer = PhotoViewer()
+        self.image_viewer.closed.connect(self._remove_photo_viewer)
         self.image_viewer.load_image(item.media)
+        self.image_viewer.show()
 
     def play_list_item_photo_album(self, item):
         self.image_viewer = PhotoViewer()
-        self.image_viewer.load_gallery(item.media)
+        self.image_viewer.closed.connect(self._remove_photo_viewer)
+        self.image_viewer.hide()
+        worker = ContainerWorker(self.server, item.media['key'])
+        worker.done.connect(self.image_viewer.load_gallery)
+        worker.done.connect(self.indicator.hide)
+        worker.done.connect(self.image_viewer.show)
+        worker.finished.connect(self._remove_worker)
+        worker.moveToThread(self.thread)
+        self.operate.connect(worker.run)
+        self.operate.connect(self.indicator.show)
+        self.workers[item.media['key']] = worker
+        self.operate.emit()
 
     def item_double_clicked(self, item):
         if item.media.is_playable:
@@ -248,6 +277,9 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             del self.workers[key]
         except KeyError:
             pass
+
+    def _remove_photo_viewer(self):
+        self.image_viewer = None
 
     def update_list(self, container):
         self.list.add_container(container)
