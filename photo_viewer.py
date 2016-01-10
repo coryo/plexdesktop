@@ -27,6 +27,7 @@ class ImgWorker(QObject):
 
 class PhotoViewer(QWidget):
     operate = pyqtSignal()
+    closed = pyqtSignal()
 
     def __init__(self, parent=None):
         super(PhotoViewer, self).__init__(parent)
@@ -38,7 +39,9 @@ class PhotoViewer(QWidget):
         self.worker_thread.start()
         self.worker = None
 
+        self.window_target_width = 800
         self.scale_factor = 1.0
+        self.last_zoom = None
         self.drag_position = None
         self.album = None
         self.cur_image = None
@@ -56,10 +59,14 @@ class PhotoViewer(QWidget):
 
         self.ui.btn_prev.pressed.connect(self.prev)
         self.ui.btn_next.pressed.connect(self.next)
-        self.show()
+        self.ui.btn_fit.pressed.connect(self.fit)
+
+    def fit(self):
+        self.scroll_area.setWidgetResizable(not self.scroll_area.widgetResizable())
 
     def closeEvent(self, event):
         self.worker_thread.quit()
+        self.closed.emit()
 
     def next(self):
         if self.album is None or self.cur_image is None:
@@ -94,23 +101,26 @@ class PhotoViewer(QWidget):
         self.operate.emit()
 
     def load_gallery(self, media_object):
-        self.album = media_object.parent.server.media_container(media_object['key'])
+        self.album = media_object
+        # self.album = media_object.parent.server.media_container(media_object['key'])
         self.cur_image = self.album.children[0]
         self.load_image(self.cur_image)
 
     def update_img(self, img):
-        print('update image')
         self.image_label.setPixmap(img)
         self.scale_factor = 1.0
-        # self.scroll_area.setWidgetResizable(True)
         self.image_label.adjustSize()
-        # self.zoom(-50)
-        self.resize(QSize(800, 600))
+
+        if self.last_zoom is None:
+            self.last_zoom = (1/self.image_label.pixmap().width()) * self.window_target_width
+        self.scale_image(self.last_zoom)
+        self.resize(QSize(10+self.image_label.width(),
+                          10+self.image_label.height()+self.ui.control_bar.height()))
         self.center()
 
     def scale_image(self, factor):
         self.scale_factor *= factor
-        print(self.scale_factor)
+        self.last_zoom = self.scale_factor
         self.image_label.resize(self.scale_factor * self.image_label.pixmap().size())
 
         hscroll = self.scroll_area.horizontalScrollBar()
@@ -131,15 +141,16 @@ class PhotoViewer(QWidget):
         vscroll.setValue(vscroll.maximum()/2)
 
     def zoom(self, perc):
-        change = 1.0 + perc/100
+        change = 1.0 + perc
         if 0.01 < self.scale_factor*change < 2:
+            self.last_zoom = perc
             self.scale_image(change)
 
     def wheelEvent(self, event):
         degrees = event.angleDelta().y() / 8
         steps = int(degrees / 15)
         if event.modifiers() & Qt.ShiftModifier:
-            amount = steps * 10
+            amount = steps * 0.10
             self.zoom(amount)
             event.accept()
         elif event.modifiers() & Qt.ControlModifier:
