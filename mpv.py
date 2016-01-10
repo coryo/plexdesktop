@@ -457,11 +457,11 @@ class MPV:
 
     @property
     def video_params(self):
-        return self._get_dict('video-params/', _VIDEO_PARAMS_LIST)
+        return self._get_dict('video-params/', MPV._VIDEO_PARAMS_LIST)
 
     @property
     def video_out_params(self):
-        return self._get_dict('video-out-params/', _VIDEO_PARAMS_LIST)
+        return self._get_dict('video-out-params/', MPV._VIDEO_PARAMS_LIST)
 
     @property
     def playlist(self):
