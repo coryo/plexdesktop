@@ -57,12 +57,16 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.servers.clear()
         for i, item in enumerate(self.session.players):
             self.players.addItem('{} - {}'.format(item.name, item.product), i)
-        if self.players.count() > 0:
             self.btn_launch.setEnabled(True)
         for i, item in enumerate(self.session.servers):
             self.servers.addItem('{} - {}'.format(item.name, item.product), i)
-        if self.players.count() > 0:
-            self.btn_browser.setEnabled(True)
+            self.btn_browser.setEnabled(True)          
+
+    def enable_remote(self):
+        self.btn_launch.setEnabled(True)
+
+    def enable_browser(self):
+        self.btn_browser.setEnabled(True)
 
     def newRemote(self):
         try:

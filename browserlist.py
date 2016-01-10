@@ -93,6 +93,7 @@ class BrowserListItem(QListWidgetItem):
             print(str(e))
 
     def update_offset(self, offset):
+        self.media['viewOffset'] = offset
         self.update_bg(offset)
 
     def clear_bg(self):

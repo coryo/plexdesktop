@@ -62,8 +62,10 @@ class MPVPlayer(QWidget):
         self.last_volume = int(self.settings.value('last_volume', 0))
         self.mpv.add_volume(-100)
         self.mpv.add_volume(self.last_volume)
-        self.media_object = None
         self.drag_position = None
+
+        self.play_queue = None
+        self.current_item = None
 
         self.ui.slider_progress.sliderReleased.connect(self.seek)
         self.ui.slider_progress.sliderMoved.connect(self.update_current_time)
@@ -95,9 +97,9 @@ class MPVPlayer(QWidget):
 
     def do_playback_restart(self, event):
         self.playback_started.emit()
-        if self.media_object['viewOffset'] > 0:
-            self.mpv.seek(self.media_object['viewOffset']//1000, 'absolute')
-            self.media_object['viewOffset'] = 0
+        if self.current_item['viewOffset'] > 0:
+            self.mpv.seek(self.current_item['viewOffset']//1000, 'absolute')
+            self.current_item['viewOffset'] = 0
 
     def do_property_change(self, event):
         if event['data'] is None:
@@ -127,17 +129,20 @@ class MPVPlayer(QWidget):
         return "{:.0f}:{:02.0f}:{:02.0f}".format(h, m, s)
 
     def play(self, media_object):
-        url = media_object.resolve_url()
         self.setWindowTitle(media_object['title'])
 
         self.play_queue = media_object.parent.server.play_queue(self.headers, media_object)
-        for item in self.play_queue.children:
-            print(item.data)
+        self.current_item = (self.play_queue.selected_item
+                             if self.play_queue.selected_item is not None
+                             else media_object)
 
-        self.media_object = media_object
-        if 'viewOffset' not in self.media_object:
-            self.media_object['viewOffset'] = 0
-        self.ui.slider_progress.setMaximum(media_object.get('duration', 1000))
+        if 'duration' in self.current_item:
+            self.update_total_time(int(self.current_item['duration']))
+            self.ui.slider_progress.setMaximum(int(self.current_item['duration']))
+        if 'viewOffset' not in self.current_item:
+            self.current_item['viewOffset'] = 0
+
+        url = self.current_item.resolve_url()
         self.mpv.play(url)
 
     def pause(self):
@@ -158,18 +163,14 @@ class MPVPlayer(QWidget):
             self.ui.control_bar.show()
 
     def update_timeline(self, state='playing'):
-        try:
-            active_item = self.play_queue.children[0]
-        except Exception:
+        if self.current_item is None or 'playQueueItemID' not in self.current_item:
             return
-        headers = self.headers
-        headers.update(self.play_queue.server.headers)
-        code, res = self.play_queue.server.request('/:/timeline', headers=headers, params={
+        code, res = self.play_queue.server.request('/:/timeline', headers=self.headers, params={
             'state': state,
             'identifier': self.play_queue['identifier'],
-            'playQueueItemID': active_item['playQueueItemID'],
-            'ratingKey': active_item['ratingKey'],
-            'duration':active_item['duration'],
+            'playQueueItemID': self.current_item['playQueueItemID'],
+            'ratingKey': self.current_item['ratingKey'],
+            'duration':self.current_item['duration'],
             'time': self.ui.slider_progress.value()
         })
         print('TIMELINE - {}'.format(code))
@@ -177,10 +178,10 @@ class MPVPlayer(QWidget):
     # QT EVENTS ################################################################
     def closeEvent(self, event):
         print(self.ui.slider_progress.value())
+        self.update_timeline(state='stopped')
+
         self.mpv.quit()
         self.mpv.terminate_destroy()
-
-        self.update_timeline(state='stopped')
 
         self.settings.setValue('last_volume', int(self.last_volume))
         self.player_stopped.emit(self.ui.slider_progress.value())
