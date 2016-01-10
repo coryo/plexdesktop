@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Player(object):
     def setupUi(self, Player):
         Player.setObjectName("Player")
-        Player.resize(611, 357)
+        Player.resize(301, 35)
         self.verticalLayout = QtWidgets.QVBoxLayout(Player)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setSpacing(0)
