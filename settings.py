@@ -4,10 +4,10 @@ class Settings(QSettings):
     def __init__(self, parent=None):
         super(Settings, self).__init__('settings.ini', QSettings.IniFormat, parent)
         self.defaults = {
-            'user': '',
-            'password': '',
-            'ext_player': 'c:/Program Files (x86)/VideoLAN/VLC/vlc.exe',
-            'ext_player_args': '%URL%'
+            'user': ''
+            # 'password': '',
+            # 'ext_player': 'c:/Program Files (x86)/VideoLAN/VLC/vlc.exe',
+            # 'ext_player_args': '%URL%'
         }
 
     def set_defaults(self):

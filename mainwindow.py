@@ -22,7 +22,6 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
 
         settings = Settings()
         self.user.setText(settings.value('user'))
-        self.password.setText(settings.value('password'))
         self.loadSession()
 
     def loadSession(self):
@@ -37,7 +36,6 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         sender = self.sender()
         settings = Settings()
         settings.setValue('user', self.user.text().strip())
-        settings.setValue('password', self.password.text().strip())
         self.session = plexdevices.Session(user=self.user.text().strip(),
                                     password=self.password.text().strip())
         try:
