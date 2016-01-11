@@ -1,3 +1,4 @@
+import time
 from PyQt5.QtWidgets import QWidget, QLabel, QSizePolicy, QScrollArea
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QPoint, QSize
 from PyQt5.QtGui import QPalette, QPixmap, QPixmapCache
@@ -66,6 +67,8 @@ class PhotoViewer(QWidget):
 
     def closeEvent(self, event):
         self.worker_thread.quit()
+        while(self.worker_thread.isRunning()):
+            time.sleep(0.1)
         self.closed.emit()
 
     def next(self):

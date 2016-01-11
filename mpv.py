@@ -277,25 +277,11 @@ def load_lua():
 
 class MPV:
     """ See man mpv(1) for the details of the implemented commands. """
-    def __init__(self, cb, **kwargs):
+    def __init__(self, **kwargs):
         """ Create an MPV instance.
-        
+
         Any kwargs given will be passed to mpv as options. """
-
         self.handle = _mpv_create()
-
-        self.event_callbacks = [cb]
-        self._playback_cond = threading.Condition()
-        def event_loop():
-            for event in _event_generator(self.handle):
-                devent = event.as_dict() # copy data from ctypes
-                if devent['event_id'] in (MpvEventID.SHUTDOWN, MpvEventID.END_FILE, MpvEventID.PAUSE):
-                    with self._playback_cond:
-                        self._playback_cond.notify_all()
-                for callback in self.event_callbacks:
-                    callback.call(devent)
-        self._event_thread = threading.Thread(target=event_loop, daemon=True)
-        self._event_thread.start()
 
         _mpv_set_option_string(self.handle, b'audio-display', b'no')
         istr = lambda o: ('yes' if o else 'no') if type(o) is bool else str(o)
@@ -315,6 +301,9 @@ class MPV:
     #     _mpv_terminate_destroy(self.handle)
     def terminate_destroy(self):
         _mpv_terminate_destroy(self.handle)
+
+    def detach_destroy(self):
+        _mpv_detach_destroy(self.handle)
 
     def command(self, name, *args):
         """ Execute a raw command """

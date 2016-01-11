@@ -1,7 +1,5 @@
-import os
-import subprocess
 import math
-import threading
+import time
 from PyQt5.QtWidgets import QWidget, QAction, QMenu
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 from PyQt5.QtGui import QCursor
@@ -46,6 +44,7 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         self.location = '/library/sections'
         self.history = [self.location]
         self.mpvplayer = None
+        self.image_viewer = None
         self.cur_page = 0
         self.total_pages = 0
         self.container_size = 20
@@ -167,6 +166,8 @@ class Browser(QWidget, browser_ui.Ui_Browser):
 
     def closeEvent(self, event):
         self.thread.quit()
+        while self.thread.isRunning():
+            time.sleep(0.1)
 
     def channels(self):
         self.data(key='/channels/all')
@@ -200,6 +201,8 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         # self.layout().addWidget(self.mpvplayer)
 
     def play_list_item_photo(self, item):
+        if self.image_viewer is not None:
+            self.image_viewer.close()
         self.image_viewer = PhotoViewer()
         self.image_viewer.closed.connect(self._remove_photo_viewer)
         self.image_viewer.load_image(item.media)
@@ -279,6 +282,7 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             pass
 
     def _remove_photo_viewer(self):
+        self.image_viewer.close()
         self.image_viewer = None
 
     def update_list(self, container):
