@@ -1,9 +1,10 @@
 import time
 from PyQt5.QtWidgets import QWidget, QLabel, QSizePolicy, QScrollArea
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QPoint, QSize
-from PyQt5.QtGui import QPalette, QPixmap, QPixmapCache
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QPoint, QSize, QBuffer
+from PyQt5.QtGui import QPalette, QPixmap, QGuiApplication, QImageReader
 import photo_viewer_ui
 from settings import Settings
+from image_cache import ImageCache
 
 class ImgWorker(QObject):
     signal = pyqtSignal(QPixmap)
@@ -15,12 +16,25 @@ class ImgWorker(QObject):
 
     def run(self):
         url = self.media_object.resolve_url()
-        img = QPixmapCache.find(url)
-        if img is None:
+        print(url)
+        img = None
+
+        cache = ImageCache()
+        if url in cache:
+            img_data = cache[url]
+            print('in cache')
+        else:
             img_data = self.media_object.parent.server.image(url)
-            img = QPixmap()
-            img.loadFromData(img_data)
-            QPixmapCache.insert(url, img)
+            cache[url] = img_data
+            print('not in cache')
+        cache.save()
+
+        buf = QBuffer()
+        buf.setData(img_data)
+        reader = QImageReader(buf)
+        qimage = reader.read()
+        img = QPixmap.fromImage(qimage)
+
         if not img.isNull():
             self.signal.emit(img)
         self.finished.emit()
@@ -29,6 +43,8 @@ class ImgWorker(QObject):
 class PhotoViewer(QWidget):
     operate = pyqtSignal()
     closed = pyqtSignal()
+    prev_button = pyqtSignal()
+    next_button = pyqtSignal()
 
     def __init__(self, parent=None):
         super(PhotoViewer, self).__init__(parent)
@@ -40,7 +56,8 @@ class PhotoViewer(QWidget):
         self.worker_thread.start()
         self.worker = None
 
-        self.window_target_width = 800
+        # self.window_target_width = 800
+        self.window_target_height = QGuiApplication.primaryScreen().availableSize().height() * 3 / 5
         self.scale_factor = 1.0
         self.last_zoom = None
         self.drag_position = None
@@ -62,6 +79,8 @@ class PhotoViewer(QWidget):
         self.ui.btn_next.pressed.connect(self.next)
         self.ui.btn_fit.pressed.connect(self.fit)
 
+        # self.ui.control_bar.hide()
+
     def fit(self):
         self.scroll_area.setWidgetResizable(not self.scroll_area.widgetResizable())
 
@@ -72,26 +91,28 @@ class PhotoViewer(QWidget):
         self.closed.emit()
 
     def next(self):
-        if self.album is None or self.cur_image is None:
-            return
-        i = self.album.children.index(self.cur_image) + 1
-        if i >= len(self.album.children) - 1:
-            i = 0
-        try:
-            self.load_image(self.album.children[i])
-            self.cur_image = self.album.children[i]
-        except Exception:
-            pass
+        self.next_button.emit()
+        # if self.album is None or self.cur_image is None:
+        #     return
+        # i = self.album.index(self.cur_image) + 1
+        # if i >= len(self.album) - 1:
+        #     i = 0
+        # try:
+        #     self.load_image(self.album[i])
+        #     self.cur_image = self.album[i]
+        # except Exception:
+        #     pass
 
     def prev(self):
-        if self.album is None or self.cur_image is None:
-            return
-        i = self.album.children.index(self.cur_image) - 1
-        try:
-            self.load_image(self.album.children[i])
-            self.cur_image = self.album.children[i]
-        except Exception:
-            pass            
+        self.prev_button.emit()
+        # if self.album is None or self.cur_image is None:
+        #     return
+        # i = self.album.index(self.cur_image) - 1
+        # try:
+        #     self.load_image(self.album[i])
+        #     self.cur_image = self.album[i]
+        # except Exception:
+        #     pass            
 
     def load_image(self, media_object):
         self.setWindowTitle(media_object['title'])
@@ -104,9 +125,9 @@ class PhotoViewer(QWidget):
         self.operate.emit()
 
     def load_gallery(self, media_object):
-        self.album = media_object
+        self.album = [x for x in media_object.children if x.is_photo]
         # self.album = media_object.parent.server.media_container(media_object['key'])
-        self.cur_image = self.album.children[0]
+        self.cur_image = self.album[0]
         self.load_image(self.cur_image)
 
     def update_img(self, img):
@@ -115,7 +136,8 @@ class PhotoViewer(QWidget):
         self.image_label.adjustSize()
 
         if self.last_zoom is None:
-            self.last_zoom = (1/self.image_label.pixmap().width()) * self.window_target_width
+            #self.last_zoom = (1/self.image_label.pixmap().width()) * self.window_target_width
+            self.last_zoom = (1/self.image_label.pixmap().height()) * self.window_target_height
         self.scale_image(self.last_zoom)
         self.resize(QSize(10+self.image_label.width(),
                           10+self.image_label.height()+self.ui.control_bar.height()))
