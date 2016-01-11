@@ -1,6 +1,6 @@
 import math
 import time
-from PyQt5.QtWidgets import QWidget, QAction, QMenu
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -14,25 +14,28 @@ class ContainerWorker(QObject):
     done = pyqtSignal(plexdevices.MediaContainer)
     finished = pyqtSignal(str)
 
-    def __init__(self, server, key, page=0, size=20, sort=None):
+    def __init__(self, server, key, page=0, size=20, sort=None, params=None):
         super().__init__()
         self.server = server
         self.key = key
         self.page = page
         self.size = size
         self.sort = sort
+        self.params = {} if sort is None else {'sort': sort}
+        if params is not None:
+            self.params.update(params)
 
     def run(self):
         container = self.server.media_container(self.key, page=self.page,
                                                 size=self.size,
-                                                params=(None if self.sort is None
-                                                        else {'sort': self.sort}))
+                                                params=self.params)
         self.done.emit(container)
         self.finished.emit(self.key)
 
 
 class Browser(QWidget, browser_ui.Ui_Browser):
     operate = pyqtSignal()
+    new_image_selection = pyqtSignal(plexdevices.MediaObject)
 
     def __init__(self, session, server, parent=None):
         super(self.__class__, self).__init__(parent)
@@ -63,6 +66,7 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         self.zoom.valueChanged.connect(self.list.icon_size)
 
         self.list.customContextMenuRequested.connect(self.context_menu)
+        self.list.itemSelectionChanged.connect(self.selection_changed)
 
         self.sort.addItem('', None)
         self.sort.addItem('added (new)', 'addedAt:desc')
@@ -82,6 +86,10 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         self.data(key=self.location)
         self.show()
 
+    def selection_changed(self):
+        if self.list.currentItem() is not None and self.list.currentItem().media.is_photo:
+            self.new_image_selection.emit(self.list.currentItem().media)
+
     def context_menu(self, pos):
         item = self.list.currentItem()
         # print('[{}] {}: {}'.format(item.media['_elementType'],
@@ -96,13 +104,13 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             play_action = QAction('view photo', menu)
             play_action.triggered.connect(self.action_play_photo)
             menu.addAction(play_action)
-        elif item.media.is_photo_album:
-            play_action = QAction('view album', menu)
-            play_action.triggered.connect(self.action_play_photo_album)
-            menu.addAction(play_action)
-            open_action = QAction('open', menu)
-            open_action.triggered.connect(self.action_open)
-            menu.addAction(open_action)
+        # elif item.media.is_photo_album:
+        #     play_action = QAction('view album', menu)
+        #     play_action.triggered.connect(self.action_play_photo_album)
+        #     menu.addAction(play_action)
+        #     open_action = QAction('open', menu)
+        #     open_action.triggered.connect(self.action_open)
+        #     menu.addAction(open_action)
         else:
             open_action = QAction('open', menu)
             open_action.triggered.connect(self.action_open)
@@ -134,8 +142,8 @@ class Browser(QWidget, browser_ui.Ui_Browser):
     def action_play_photo(self):
         self.play_list_item_photo(self.list.currentItem())
 
-    def action_play_photo_album(self):
-        self.play_list_item_photo_album(self.list.currentItem())        
+    # def action_play_photo_album(self):
+    #     self.play_list_item_photo_album(self.list.currentItem())        
 
     def action_open(self):
         self.data(item=self.list.currentItem())
@@ -160,6 +168,35 @@ class Browser(QWidget, browser_ui.Ui_Browser):
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
+
+    def create_photo_viewer(self):
+        if self.image_viewer is not None:
+            self.image_viewer.close()
+        self.image_viewer = PhotoViewer()
+        self.image_viewer.closed.connect(self._remove_photo_viewer)
+        self.image_viewer.next_button.connect(self.select_next)
+        self.image_viewer.prev_button.connect(self.select_prev)
+        self.new_image_selection.connect(self.image_viewer.load_image)
+
+    def select_next(self):
+        print('select_next')
+        cur_row = self.list.currentRow()
+        if self.list.count()-1 <= cur_row <= 0:
+            return
+        # try:
+        self.list.setCurrentRow(cur_row+1)
+        # except Exception:
+        #     print(str(e))
+
+    def select_prev(self):
+        print('select_prev')
+        cur_row = self.list.currentRow()
+        if self.list.count()-1 <= cur_row <= 0:
+            return
+        # try:
+        self.list.setCurrentRow(cur_row-1)
+        # except Exception as e:
+        #     print(str(e))
 
     def destroy_player(self):
         self.mpvplayer = None
@@ -201,47 +238,48 @@ class Browser(QWidget, browser_ui.Ui_Browser):
         # self.layout().addWidget(self.mpvplayer)
 
     def play_list_item_photo(self, item):
-        if self.image_viewer is not None:
-            self.image_viewer.close()
-        self.image_viewer = PhotoViewer()
-        self.image_viewer.closed.connect(self._remove_photo_viewer)
+        self.create_photo_viewer()
         self.image_viewer.load_image(item.media)
         self.image_viewer.show()
 
-    def play_list_item_photo_album(self, item):
-        self.image_viewer = PhotoViewer()
-        self.image_viewer.closed.connect(self._remove_photo_viewer)
-        self.image_viewer.hide()
-        worker = ContainerWorker(self.server, item.media['key'])
-        worker.done.connect(self.image_viewer.load_gallery)
-        worker.done.connect(self.indicator.hide)
-        worker.done.connect(self.image_viewer.show)
-        worker.finished.connect(self._remove_worker)
-        worker.moveToThread(self.thread)
-        self.operate.connect(worker.run)
-        self.operate.connect(self.indicator.show)
-        self.workers[item.media['key']] = worker
-        self.operate.emit()
+    # def play_list_item_photo_album(self, item):
+    #     self.create_photo_viewer()
+    #     self.image_viewer.hide()
+    #     worker = ContainerWorker(self.server, item.media['key'])
+    #     worker.done.connect(self.image_viewer.load_gallery)
+    #     worker.done.connect(self.indicator.hide)
+    #     worker.done.connect(self.image_viewer.show)
+    #     worker.finished.connect(self._remove_worker)
+    #     worker.moveToThread(self.thread)
+    #     self.operate.connect(worker.run)
+    #     self.operate.connect(self.indicator.show)
+    #     self.workers[item.media['key']] = worker
+    #     self.operate.emit()
+    def search_prompt(self, item):
+        print('search')
+        text, ok = QInputDialog.getText(self, 'Search', 'query:')
+        if ok:
+            print(item.media['key']+'&query='+text)
+            self.data(key=item.media['key'], params={'query': text})
 
     def item_double_clicked(self, item):
         if item.media.is_playable:
             self.play_list_item(item)
         elif item.media.is_photo:
             self.play_list_item_photo(item)
-        elif item.media.is_photo_album:
-            self.play_list_item_photo_album(item)
+        # elif item.media.is_photo_album:
+        #     self.play_list_item_photo_album(item)
+        elif item.media.is_input:
+            self.search_prompt(item)
         else:
             self.data(item=item)
 
-    def data(self, item=None, key=None, history=True):
-        if item is not None:
-            key = item.media['key'] if item.media['key'].startswith('/') else self.location+'/'+item.media['key']
+    def data(self, item=None, key=None, history=True, params=None):
+        key = key if item is None else item.media['key']
+        if not key.startswith('/'):
+            key = self.location+'/'+key
         print(key)
 
-        self.list.clear()
-        self.cur_page = 0
-        self.location = key
-        
         if key.startswith('/library'):
             self.sort.setEnabled(True)
             sort = self.sort.itemData(self.sort.currentIndex())
@@ -249,23 +287,28 @@ class Browser(QWidget, browser_ui.Ui_Browser):
             self.sort.setEnabled(False)
             sort = None
 
-        self.page(key, self.cur_page, self.container_size, sort=sort)
+        self.list.clear()
+        self.cur_page = 0
+        self.location = key
+        self.params = params
+
+        self.page(key, self.cur_page, self.container_size, sort=sort, params=params)
        
         if history and self.history[-1] != key:
             self.history.append(key)
 
         if not self.list.verticalScrollBar().isVisible() and self.cur_page < self.total_pages:
-            self.page(self.location, self.cur_page, self.container_size, sort=sort)
+            self.page(self.location, self.cur_page, self.container_size, sort=sort, params=params)
 
     def endless_scroll(self, value):
         if value >= self.list.verticalScrollBar().maximum() * 0.9:
             if self.cur_page < self.total_pages:
                 sort = self.sort.itemData(self.sort.currentIndex())
-                self.page(self.location, self.cur_page, sort=sort)
+                self.page(self.location, self.cur_page, sort=sort, params=self.params)
 
-    def page(self, key, page=0, size=20, sort=None):
+    def page(self, key, page=0, size=20, sort=None, params=None):
         self.cur_page += 1
-        worker = ContainerWorker(self.server, key, page, size, sort)
+        worker = ContainerWorker(self.server, key, page, size, sort, params)
         worker.done.connect(self.update_list)
         worker.done.connect(self.indicator.hide)
         worker.finished.connect(self._remove_worker)
@@ -288,7 +331,6 @@ class Browser(QWidget, browser_ui.Ui_Browser):
     def update_list(self, container):
         self.list.add_container(container)
         self.total_pages = math.ceil(container['totalSize']/self.container_size)
-        self.list.refresh_icons()
         self.update_title()
         self.update_path(container.get('title1', self.location.split('/')[-2]),
                          container.get('title2', self.location.split('/')[-1]))

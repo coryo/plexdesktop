@@ -2,10 +2,10 @@ import hashlib
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem
 from PyQt5.QtGui import QPixmap, QIcon, QBrush, QPixmapCache, QColor
 from PyQt5.QtCore import pyqtSignal, QObject, QSize, Qt, QObject, QThread, QSettings
+from image_cache import ImageCache
 
 class BrowserList(QListWidget):
     resize_signal = pyqtSignal()
-    operate = pyqtSignal()
     iconSizeChanged = pyqtSignal(QSize) # object has no attribute 'iconSizeChanged' on linux ?
 
     def __init__(self, parent=None):
@@ -13,8 +13,7 @@ class BrowserList(QListWidget):
         self.setIconSize(QSize(32, 32))
         self.current_container = None
         self.server = None
-        self.thumb_thread = QThread()
-        self.thumb_thread.start()
+        self.thumb_controller = Controller(thumb=True, parent=self)
 
     def icon_size(self, x):
         self.setIconSize(QSize(x, x))
@@ -24,20 +23,19 @@ class BrowserList(QListWidget):
         super().setIconSize(size)
         self.iconSizeChanged.emit(size)
 
-    def refresh_icons(self):
-        self.operate.emit()
-
     def closeEvent(self, event):
-        self.thumb_thread.quit()
+        del self.thumb_controller
 
     def resizeEvent(self, event):
         self.resize_signal.emit()
 
     def add_container(self, container):
+        self.thumb_controller.start()
         self.current_container = container
         self.server = container.server
         for media_object in container.children:
             self.addItem(BrowserListItem(media_object, parent=self))
+        self.thumb_controller.save()
 
 
 class BrowserListItem(QListWidgetItem):
@@ -53,17 +51,17 @@ class BrowserListItem(QListWidgetItem):
         self.parent.resize_signal.connect(self.update_bg)
 
         if self.media.get('thumb', False):
-            self.worker = ImgWorker(parent.server, self.media['thumb'], self)
-            self.worker.signal.connect(self.update_img)
-            self.worker.finished.connect(self._finished)
-            self.worker.moveToThread(self.parent.thumb_thread)
-            self.parent.operate.connect(self.worker.run)
+            self.parent.thumb_controller.get_item(self)
         if self.media.get('type', None) == 'episode':
             if 'grandparentTitle' in self.media and 'parentIndex' in self.media:
-                title = '{} - s{}e{} - {}'.format(self.media.get('grandparentTitle', ''), self.media['parentIndex'], self.media['index'], self.media['title'])
+                title = '{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
+                                                          int(self.media['parentIndex']),
+                                                          int(self.media['index']),
+                                                          self.media['title'])
             else:
                 try:
-                    ep = 's{:02d}e{:02d}'.format(int(container['parentIndex']), int(self.media['index']))
+                    ep = 's{:02d}e{:02d}'.format(int(self.media.parent['parentIndex']),
+                                                 int(self.media['index']))
                     title = ep + ' - ' + self.media['title']
                 except Exception:
                     title = self.media['title']
@@ -79,10 +77,13 @@ class BrowserListItem(QListWidgetItem):
             pass
 
     def update_bg(self, offset=None):
-        if 'viewOffset' not in self.media or 'duration' not in self.media:
+        if (('viewOffset' not in self.media) or
+                ('duration' not in self.media) or
+                (self.media['viewOffset'] == 0)):
             return
         try:
-            x = int(int(self.media['viewOffset'] if offset is None else offset)/int(self.media['duration'])*100)
+            vo = int(self.media['viewOffset']) if offset is None else offset
+            x = int(vo / int(self.media['duration']) * 100)
             xpm = ["100 1 2 1",   # 100x1 image
                    "a c #EEEEEE", # dark color
                    "b c #FFFFFF", # light color
@@ -99,7 +100,7 @@ class BrowserListItem(QListWidgetItem):
     def clear_bg(self):
         self.setBackground(QBrush(QColor(255, 255, 255)))
 
-    def update_img(self, pixmap=None):
+    def update_img(self, pixmap):
         if not pixmap.isNull():
             self.thumb = pixmap
             self.resize(self.parent.iconSize())
@@ -109,25 +110,66 @@ class BrowserListItem(QListWidgetItem):
             self.setIcon(QIcon(self.thumb.scaled(size, Qt.KeepAspectRatio)))
 
 
-class ImgWorker(QObject):
-    signal = pyqtSignal(QPixmap)
-    finished = pyqtSignal()
+class Controller(QObject):
+    operate = pyqtSignal(BrowserListItem)
+    start_cache = pyqtSignal()
+    close_cache = pyqtSignal()
 
-    def __init__(self, server, url, parent):
+    def __init__(self, thumb=False, parent=None):
         super().__init__()
-        self.server = server
-        self.url = url
-        self.parent = parent
+        self.worker_thread = QThread()
+        self.worker = ImgWorker(thumb)
+        self.worker.moveToThread(self.worker_thread)
+        self.worker_thread.finished.connect(self.worker.deleteLater)
+        self.start_cache.connect(self.worker.create_cache)
+        self.close_cache.connect(self.worker.save_cache)
+        self.operate.connect(self.worker.do_work)
+        self.worker.result_ready.connect(self.handle_results)
+        self.worker_thread.start()
 
-    def run(self):
-        img = QPixmapCache.find(self.url)
+    def start(self):
+        self.start_cache.emit()
+
+    def save(self):
+        self.close_cache.emit()
+
+    def __del__(self):
+        self.worker_thread.quit()
+        self.worker_thread.wait()
+
+    def get_item(self, item):
+        self.operate.emit(item)
+
+    def handle_results(self, item, data):
+        item.update_img(data)
+
+
+class ImgWorker(QObject):
+    result_ready = pyqtSignal(BrowserListItem, QPixmap)
+
+    def __init__(self, thumb=False, parent=None):
+        super().__init__()
+        self.thumb = thumb
+
+    def create_cache(self):
+        self.cache = ImageCache(thumb=self.thumb)
+
+    def save_cache(self):
+        self.cache.save()
+
+    def do_work(self, item):
+        url = item.media['thumb'] if self.thumb else item.media.resolve_url()
+        key = hashlib.md5((item.parent.server.client_identifier+url).encode('utf-8')).hexdigest()
+        img = QPixmapCache.find(key)
         if img is None:
-            img_data = self.server.image(self.url, w=100, h=100)
+            if url in self.cache:
+                img_data = self.cache[url]
+            else:
+                img_data = item.parent.server.image(url, w=100, h=100)
+                self.cache[url] = img_data
+
             img = QPixmap()
             img.loadFromData(img_data)
-            QPixmapCache.insert(hashlib.md5(str(self.server.client_identifier+self.url).encode('utf-8')).hexdigest(), img)
+            QPixmapCache.insert(key, img)
 
-        if not img.isNull():
-            self.signal.emit(img)
-
-        self.finished.emit()
+        self.result_ready.emit(item, img)
