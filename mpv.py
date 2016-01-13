@@ -305,6 +305,9 @@ class MPV:
     def detach_destroy(self):
         _mpv_detach_destroy(self.handle)
 
+    def observe_property(self, reply_userdata, name, mpv_format):
+        _mpv_observe_property(self.handle, reply_userdata, name.encode(), mpv_format)
+
     def command(self, name, *args):
         """ Execute a raw command """
         args = [name.encode()] + [ str(arg).encode() for arg in args if arg is not None ] + [None]

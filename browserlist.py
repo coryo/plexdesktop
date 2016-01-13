@@ -2,79 +2,116 @@ import hashlib
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem
 from PyQt5.QtGui import QPixmap, QIcon, QBrush, QPixmapCache, QColor
 from PyQt5.QtCore import pyqtSignal, QObject, QSize, Qt, QObject, QThread, QSettings
-from image_cache import ImageCache
+from sqlcache import SqlCache
+import plexdevices
 
 class BrowserList(QListWidget):
     resize_signal = pyqtSignal()
     iconSizeChanged = pyqtSignal(QSize) # object has no attribute 'iconSizeChanged' on linux ?
 
     def __init__(self, parent=None):
-        super().__init__()
+        super().__init__(parent=parent)
         self.setIconSize(QSize(32, 32))
         self.current_container = None
         self.server = None
-        self.thumb_controller = Controller(thumb=True, parent=self)
+
+        self._thumb_thread = QThread()
+        self._cache = SqlCache('thumb', access=False)
+        self._cache.moveToThread(self._thumb_thread)
+        self._thumb_thread.started.connect(self._cache.open)
+        self._thumb_thread.finished.connect(self._cache.save)
 
     def icon_size(self, x):
         self.setIconSize(QSize(x, x))
 
     def setIconSize(self, size):
         # reimplemented because linux was being weird
-        super().setIconSize(size)
+        super(BrowserList, self).setIconSize(size)
         self.iconSizeChanged.emit(size)
 
     def closeEvent(self, event):
-        del self.thumb_controller
+        self.reset()
+
+    def reset(self):
+        self._thumb_thread.quit()
+        self._thumb_thread.wait()
 
     def resizeEvent(self, event):
         self.resize_signal.emit()
 
+    def mousePressEvent(self, event):
+        if event.buttons() & Qt.BackButton:
+            event.ignore()
+        else:
+            super().mousePressEvent(event)
+
     def add_container(self, container):
-        self.thumb_controller.start()
         self.current_container = container
         self.server = container.server
         for media_object in container.children:
-            self.addItem(BrowserListItem(media_object, parent=self))
-        self.thumb_controller.save()
+            self.addItem(BrowserListItem(media_object, thread=self._thumb_thread, cache=self._cache, parent=self))
 
 
 class BrowserListItem(QListWidgetItem):
 
-    def __init__(self, media_object, parent=None):
-        super(BrowserListItem, self).__init__(parent)
+    def __init__(self, media_object, thread=None, cache=None, parent=None):
+        super().__init__(parent=parent)
         self.media = media_object
 
         self.thumb = None
         self.parent = parent
-        self.worker = None
-        self.parent.iconSizeChanged.connect(self.resize)
-        self.parent.resize_signal.connect(self.update_bg)
+ 
+        parent.iconSizeChanged.connect(self.resize)
+        parent.resize_signal.connect(self.update_bg)
 
         if self.media.get('thumb', False):
-            self.parent.thumb_controller.get_item(self)
-        if self.media.get('type', None) == 'episode':
-            if 'grandparentTitle' in self.media and 'parentIndex' in self.media:
-                title = '{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
+            self.controller = Controller(thumb=True, thread=thread, cache=cache)
+            self.controller.new_item.connect(self.update_img)
+            self.controller.operate.emit(media_object)
+
+        item_type = self.media.get('type', None)
+        view_group = self.media.parent.get('viewGroup', None)
+        mixed_parents = bool(int(self.media.parent.get('mixedParents', '0')))
+        filters = bool(int(self.media.get('filters', '0')))
+        is_library = self.media.parent.get('identifier', None) == 'com.plexapp.plugins.library'
+        if filters or not is_library:
+                t = self.media['title']
+        else:
+            if view_group == 'episode':
+                t = ('{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
+                                                       int(self.media['parentIndex']),
+                                                       int(self.media['index']),
+                                                       self.media['title'])
+                     if mixed_parents else
+                     's{:02d}e{:02d} - {}'.format(int(self.media.parent['parentIndex']),
+                                                      int(self.media['index']),
+                                                      self.media['title']))
+            elif view_group == 'season':
+                t = ('{} - {}'.format(self.media.parent['parentTitle'], self.media['title'])
+                     if mixed_parents else
+                     self.media['title'])
+            elif view_group == 'secondary':
+                t = self.media['title']
+            elif view_group == 'movie':
+                t = '{} ({})'.format(self.media['title'], self.media['year'])
+            elif view_group == 'album':
+                t = '{} - {}'.format(self.media['parentTitle'], self.media['title'])
+            elif view_group == 'track':
+                t = '{} - {}'.format(self.media['index'], self.media['title'])
+            else:
+                if item_type == 'episode':
+                    t = '{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
                                                           int(self.media['parentIndex']),
                                                           int(self.media['index']),
                                                           self.media['title'])
-            else:
-                try:
-                    ep = 's{:02d}e{:02d}'.format(int(self.media.parent['parentIndex']),
-                                                 int(self.media['index']))
-                    title = ep + ' - ' + self.media['title']
-                except Exception:
-                    title = self.media['title']
-        else:
-            title = self.media['title']
-        self.setText(title)
+                elif item_type == 'season':
+                    t = '{} - {}'.format(self.media['parentTitle'], self.media['title'])
+                elif item_type == 'movie':
+                    t = '{} ({})'.format(self.media['title'], self.media['year'])
+                else:
+                    t = self.media['title']
+        self.setText(t)
         self.update_bg()
-
-    def _finished(self):
-        try:
-            del self.worker
-        except Exception:
-            pass
 
     def update_bg(self, offset=None):
         if (('viewOffset' not in self.media) or
@@ -101,6 +138,7 @@ class BrowserListItem(QListWidgetItem):
         self.setBackground(QBrush(QColor(255, 255, 255)))
 
     def update_img(self, pixmap):
+        self.controller = None
         if not pixmap.isNull():
             self.thumb = pixmap
             self.resize(self.parent.iconSize())
@@ -111,65 +149,43 @@ class BrowserListItem(QListWidgetItem):
 
 
 class Controller(QObject):
-    operate = pyqtSignal(BrowserListItem)
-    start_cache = pyqtSignal()
-    close_cache = pyqtSignal()
+    operate = pyqtSignal(plexdevices.MediaObject)
+    new_item = pyqtSignal(QPixmap)   
 
-    def __init__(self, thumb=False, parent=None):
-        super().__init__()
-        self.worker_thread = QThread()
-        self.worker = ImgWorker(thumb)
+    def __init__(self, thumb=False, thread=None, cache=None, parent=None):
+        super().__init__(parent=parent)
+        self.worker_thread = thread
+        self.worker = ImgWorker(thumb, cache)
         self.worker.moveToThread(self.worker_thread)
-        self.worker_thread.finished.connect(self.worker.deleteLater)
-        self.start_cache.connect(self.worker.create_cache)
-        self.close_cache.connect(self.worker.save_cache)
         self.operate.connect(self.worker.do_work)
         self.worker.result_ready.connect(self.handle_results)
         self.worker_thread.start()
 
-    def start(self):
-        self.start_cache.emit()
-
-    def save(self):
-        self.close_cache.emit()
-
-    def __del__(self):
-        self.worker_thread.quit()
-        self.worker_thread.wait()
-
-    def get_item(self, item):
-        self.operate.emit(item)
-
-    def handle_results(self, item, data):
-        item.update_img(data)
+    def handle_results(self, item):
+        self.new_item.emit(item)
+        self.worker = None
 
 
 class ImgWorker(QObject):
-    result_ready = pyqtSignal(BrowserListItem, QPixmap)
+    result_ready = pyqtSignal(QPixmap)
 
-    def __init__(self, thumb=False, parent=None):
+    def __init__(self, thumb=False, cache=None, parent=None):
         super().__init__()
         self.thumb = thumb
+        self.cache = cache
 
-    def create_cache(self):
-        self.cache = ImageCache(thumb=self.thumb)
-
-    def save_cache(self):
-        self.cache.save()
-
-    def do_work(self, item):
-        url = item.media['thumb'] if self.thumb else item.media.resolve_url()
-        key = hashlib.md5((item.parent.server.client_identifier+url).encode('utf-8')).hexdigest()
-        img = QPixmapCache.find(key)
+    def do_work(self, media_object):
+        url = media_object['thumb'] if self.thumb else media_object.resolve_url()
+        key = media_object.parent.server.client_identifier + url
+        key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
+        img = QPixmapCache.find(key_hash)
         if img is None:
-            if url in self.cache:
-                img_data = self.cache[url]
-            else:
-                img_data = item.parent.server.image(url, w=100, h=100)
+            img_data = self.cache[url]
+            if img_data is None:
+                img_data = media_object.parent.server.image(url, w=300, h=300)
                 self.cache[url] = img_data
-
             img = QPixmap()
             img.loadFromData(img_data)
-            QPixmapCache.insert(key, img)
-
-        self.result_ready.emit(item, img)
+            QPixmapCache.insert(key_hash, img)
+        self.result_ready.emit(img)
+        return

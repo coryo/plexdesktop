@@ -17,8 +17,9 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.session = None
 
         self.btn_login.clicked.connect(self.newSession)
-        self.btn_launch.clicked.connect(self.newRemote)
+        self.btn_remote.clicked.connect(self.newRemote)
         self.btn_browser.clicked.connect(self.newBrowser)
+        self.btn_browser.clicked.connect(self.close)
 
         settings = Settings()
         self.user.setText(settings.value('user'))
@@ -55,13 +56,13 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.servers.clear()
         for i, item in enumerate(self.session.players):
             self.players.addItem('{} - {}'.format(item.name, item.product), i)
-            self.btn_launch.setEnabled(True)
+            self.btn_remote.setEnabled(True)
         for i, item in enumerate(self.session.servers):
             self.servers.addItem('{} - {}'.format(item.name, item.product), i)
             self.btn_browser.setEnabled(True)          
 
     def enable_remote(self):
-        self.btn_launch.setEnabled(True)
+        self.btn_remote.setEnabled(True)
 
     def enable_browser(self):
         self.btn_browser.setEnabled(True)
@@ -82,3 +83,7 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
     def newBrowser(self):
         b = Browser(self.session, self.session.servers[self.servers.currentIndex()])
         self.browsers.append(b)
+
+    def keyPressEvent(self, event):
+        print(event.key())
+        print(event.text())

@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Player(object):
     def setupUi(self, Player):
         Player.setObjectName("Player")
-        Player.resize(301, 35)
+        Player.resize(301, 33)
         self.verticalLayout = QtWidgets.QVBoxLayout(Player)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setSpacing(0)
@@ -33,7 +33,7 @@ class Ui_Player(object):
         self.control_bar.setContextMenuPolicy(QtCore.Qt.PreventContextMenu)
         self.control_bar.setObjectName("control_bar")
         self.horizontalLayout = QtWidgets.QHBoxLayout(self.control_bar)
-        self.horizontalLayout.setContentsMargins(4, 1, 4, 1)
+        self.horizontalLayout.setContentsMargins(4, 0, 4, 0)
         self.horizontalLayout.setSpacing(4)
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.btn_play = QtWidgets.QPushButton(self.control_bar)

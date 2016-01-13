@@ -6,12 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>422</width>
-    <height>465</height>
+    <width>466</width>
+    <height>404</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
@@ -21,7 +24,7 @@
     <number>0</number>
    </property>
    <property name="topMargin">
-    <number>2</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
     <number>0</number>
@@ -36,6 +39,9 @@
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
+     </property>
+     <property name="styleSheet">
+      <string notr="true"/>
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <property name="spacing">
@@ -65,21 +71,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="btn_fit">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
+       <widget class="QPushButton" name="btn_refresh">
         <property name="text">
-         <string>[]</string>
+         <string>refresh</string>
         </property>
        </widget>
       </item>
@@ -128,14 +122,17 @@
     </widget>
    </item>
    <item>
-    <widget class="QWidget" name="verticalWidget" native="true">
+    <widget class="QWidget" name="horizontalWidget" native="true">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <layout class="QVBoxLayout" name="viewer">
+     <property name="styleSheet">
+      <string notr="true">background-color:black;</string>
+     </property>
+     <layout class="QHBoxLayout" name="viewer">
       <property name="spacing">
        <number>0</number>
       </property>
@@ -151,11 +148,34 @@
       <property name="bottomMargin">
        <number>0</number>
       </property>
+      <item>
+       <widget class="AspectRatioLabel" name="image_label">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>TextLabel</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>AspectRatioLabel</class>
+   <extends>QLabel</extends>
+   <header>extra_widgets.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>
