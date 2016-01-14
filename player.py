@@ -95,6 +95,7 @@ class MPVPlayer(QWidget):
 
         self.play_queue = None
         self.current_item = None
+        self.resized = False
 
         self.ui.slider_progress.sliderReleased.connect(self.seek)
         self.ui.slider_progress.sliderMoved.connect(self.update_current_time)
@@ -145,7 +146,9 @@ class MPVPlayer(QWidget):
         self.show()
         try:
             video_params = self.mpv.video_params
-            self.resize(QSize(video_params['w'], video_params['h']+self.ui.control_bar.height()))
+            if not self.resized:
+                self.resized = True
+                self.resize(QSize(video_params['w'], video_params['h']+self.ui.control_bar.height()))
         except Exception:
             pass
         if self.current_item['viewOffset'] > 0:
