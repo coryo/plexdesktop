@@ -83,7 +83,3 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
     def newBrowser(self):
         b = Browser(self.session, self.session.servers[self.servers.currentIndex()])
         self.browsers.append(b)
-
-    def keyPressEvent(self, event):
-        print(event.key())
-        print(event.text())
