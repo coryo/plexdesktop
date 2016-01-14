@@ -1,5 +1,5 @@
 import hashlib
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem
+from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QListView
 from PyQt5.QtGui import QPixmap, QIcon, QBrush, QPixmapCache, QColor
 from PyQt5.QtCore import pyqtSignal, QObject, QSize, Qt, QObject, QThread, QSettings
 from sqlcache import SqlCache
@@ -12,8 +12,10 @@ class BrowserList(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setIconSize(QSize(32, 32))
+        self.setResizeMode(QListView.Adjust)
+        self.setUniformItemSizes(True)
+
         self.current_container = None
-        self.server = None
 
         self._thumb_thread = QThread()
         self._cache = SqlCache('thumb', access=False)
@@ -21,12 +23,18 @@ class BrowserList(QListWidget):
         self._thumb_thread.started.connect(self._cache.open)
         self._thumb_thread.finished.connect(self._cache.save)
 
+    def toggle_view_mode(self):
+        if self.viewMode() == QListView.ListMode:
+            self.setViewMode(QListView.IconMode)
+        else:
+            self.setViewMode(QListView.ListMode)
+
     def icon_size(self, x):
         self.setIconSize(QSize(x, x))
 
     def setIconSize(self, size):
         # reimplemented because linux was being weird
-        super(BrowserList, self).setIconSize(size)
+        super().setIconSize(size)
         self.iconSizeChanged.emit(size)
 
     def closeEvent(self, event):
@@ -37,6 +45,7 @@ class BrowserList(QListWidget):
         self._thumb_thread.wait()
 
     def resizeEvent(self, event):
+        super().resizeEvent(event)
         self.resize_signal.emit()
 
     def mousePressEvent(self, event):
@@ -47,22 +56,20 @@ class BrowserList(QListWidget):
 
     def add_container(self, container):
         self.current_container = container
-        self.server = container.server
         for media_object in container.children:
-            self.addItem(BrowserListItem(media_object, thread=self._thumb_thread, cache=self._cache, parent=self))
+            item = BrowserListItem(media_object, thread=self._thumb_thread, cache=self._cache, parent=self)
+            self.iconSizeChanged.connect(item.resize_icon)
+            self.resize_signal.connect(item.update_bg)
+            self.addItem(item)
 
 
 class BrowserListItem(QListWidgetItem):
 
     def __init__(self, media_object, thread=None, cache=None, parent=None):
-        super().__init__(parent=parent)
+        super().__init__(parent)
         self.media = media_object
-
         self.thumb = None
-        self.parent = parent
- 
-        parent.iconSizeChanged.connect(self.resize)
-        parent.resize_signal.connect(self.update_bg)
+        self.setIcon(QIcon(QPixmap(300, 300)))
 
         if self.media.get('thumb', False):
             self.controller = Controller(thumb=True, thread=thread, cache=cache)
@@ -75,7 +82,7 @@ class BrowserListItem(QListWidgetItem):
         filters = bool(int(self.media.get('filters', '0')))
         is_library = self.media.parent.get('identifier', None) == 'com.plexapp.plugins.library'
         if filters or not is_library:
-                t = self.media['title']
+            t = self.media['title']
         else:
             if view_group == 'episode':
                 t = ('{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
@@ -84,8 +91,8 @@ class BrowserListItem(QListWidgetItem):
                                                        self.media['title'])
                      if mixed_parents else
                      's{:02d}e{:02d} - {}'.format(int(self.media.parent['parentIndex']),
-                                                      int(self.media['index']),
-                                                      self.media['title']))
+                                                  int(self.media['index']),
+                                                  self.media['title']))
             elif view_group == 'season':
                 t = ('{} - {}'.format(self.media.parent['parentTitle'], self.media['title'])
                      if mixed_parents else
@@ -126,7 +133,7 @@ class BrowserListItem(QListWidgetItem):
                    "b c #FFFFFF", # light color
                    "a"*x + "b"*(100-x)
                   ]
-            self.setBackground(QBrush(QPixmap(xpm).scaled(self.parent.width(), 1)))
+            self.setBackground(QBrush(QPixmap(xpm).scaled(self.listWidget().width(), 1)))
         except Exception as e:
             print(str(e))
 
@@ -141,16 +148,17 @@ class BrowserListItem(QListWidgetItem):
         self.controller = None
         if not pixmap.isNull():
             self.thumb = pixmap
-            self.resize(self.parent.iconSize())
+            self.resize_icon(self.listWidget().iconSize())
+            # self.listWidget().reset()
 
-    def resize(self, size):
+    def resize_icon(self, size):
         if self.thumb is not None:
             self.setIcon(QIcon(self.thumb.scaled(size, Qt.KeepAspectRatio)))
 
 
 class Controller(QObject):
     operate = pyqtSignal(plexdevices.MediaObject)
-    new_item = pyqtSignal(QPixmap)   
+    new_item = pyqtSignal(QPixmap)
 
     def __init__(self, thumb=False, thread=None, cache=None, parent=None):
         super().__init__(parent=parent)

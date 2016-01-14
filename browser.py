@@ -1,6 +1,5 @@
 import math
-import time
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QListView
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -53,7 +52,7 @@ class Browser(QWidget):
         self._worker.moveToThread(self._worker_thread)
         self.operate.connect(self._worker.run)
         self.operate.connect(self.ui.indicator.show)
-        self._worker.done.connect(self.update_list)
+        self._worker.done.connect(self._update_list)
         self._worker.finished.connect(self.ui.indicator.hide)
         self._worker_thread.start()
 
@@ -64,18 +63,21 @@ class Browser(QWidget):
         self.ui.btn_recently_added.clicked.connect(self.recently_added)
         self.ui.btn_home.clicked.connect(self.home)
         self.ui.btn_channels.clicked.connect(self.channels)
-        self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
-        self.ui.list.verticalScrollBar().valueChanged.connect(self.endless_scroll)
+        self.ui.btn_sort.pressed.connect(self.reload)
+        self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
+
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
 
+        self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
+        self.ui.list.verticalScrollBar().valueChanged.connect(self._endless_scroll)
         self.ui.list.customContextMenuRequested.connect(self.context_menu)
         self.ui.list.itemSelectionChanged.connect(self.selection_changed)
 
         self.ui.sort.addItem('Default sort', None)
         self.ui.sort.addItem('Added (new)', 'addedAt:desc')
         self.ui.sort.addItem('Added (old)', 'addedAt:asc')
-        self.ui.sort.addItem('Aelease (new)', 'originallyAvailableAt:desc')
-        self.ui.sort.addItem('Aelease (old)', 'originallyAvailableAt:asc')
+        self.ui.sort.addItem('Release (new)', 'originallyAvailableAt:desc')
+        self.ui.sort.addItem('Release (old)', 'originallyAvailableAt:asc')
         self.ui.sort.addItem('A-Z', 'titleSort:asc')
         self.ui.sort.addItem('Z-A', 'titleSort:desc')
         self.ui.sort.addItem('Rating (high)', 'rating:desc')
@@ -84,7 +86,6 @@ class Browser(QWidget):
         self.ui.sort.addItem('Resolution (high)', 'mediaHeight:desc')
         self.ui.sort.addItem('Duration (long)', 'duration:desc')
         self.ui.sort.addItem('Duration (short)', 'duration:asc')
-        self.ui.sort.currentIndexChanged.connect(self.reload)
 
         self.ui.servers.currentIndexChanged.connect(self.change_server)
 
@@ -96,7 +97,7 @@ class Browser(QWidget):
     def initialize(self, server):
         self.server = server
         self.location = '/library/sections'
-        self.history = [self.location]
+        self.history = [(self.location, 0)]
         self.cur_page = 0
         self.total_pages = 0
         self.data(key=self.location)
@@ -236,6 +237,7 @@ class Browser(QWidget):
         self.ui.list.setCurrentRow(cur_row - 1)
 
     def closeEvent(self, event):
+        self.ui.list.close()
         self._worker_thread.quit()
         self._worker_thread.wait()
 
@@ -243,7 +245,7 @@ class Browser(QWidget):
         self.data(key='/channels/all')
 
     def home(self):
-        self.history = ['/library/sections']
+        self.history = [('/library/sections', 0)]
         self.data(key='/library/sections')
 
     def on_deck(self):
@@ -253,13 +255,15 @@ class Browser(QWidget):
         self.data(key='/library/recentlyAdded')
 
     def reload(self):
-        self.data(key=self.location)
+        key, sort = self.location
+        self.data(key=key, sort=self.ui.sort.currentIndex())
 
     def back(self):
         print(self.history)
         if len(self.history) > 1:
             self.history.pop()
-            self.data(key=self.history[-1], history=False)
+            key, sort = self.history[-1]
+            self.data(key=key, sort=sort, history=False)
 
     def play_list_item(self, item):
         if self.mpvplayer is not None:
@@ -289,56 +293,60 @@ class Browser(QWidget):
         else:
             self.data(item=item)
 
-    def data(self, item=None, key=None, history=True, params={}):
+    def data(self, item=None, key=None, history=True, sort=0, params={}):
         key = key if item is None else item.media['key']
         if not key.startswith('/'):
-            key = self.location+'/'+key
+            key = self.location[0]+'/'+key
         print(key)
 
+        self.ui.sort.setCurrentIndex(sort)
         if key.startswith('/library'):
             self.ui.sort.setEnabled(True)
-            sort = self.ui.sort.itemData(self.ui.sort.currentIndex())
+            self.ui.btn_sort.setEnabled(True)
         else:
             self.ui.sort.setEnabled(False)
-            sort = None
+            self.ui.btn_sort.setEnabled(False)
 
         self.ui.list.clear()
         self.cur_page = 0
-        self.location = key
+        self.location = (key, sort)
         self.params = params
 
-        self.page(key, self.cur_page, self.container_size, sort=sort, params=params)
-       
-        if history and self.history[-1] != key:
-            self.history.append(key)
+        self._page(key, self.cur_page, self.container_size, sort=sort, params=params)
+
+        if history and self.history[-1] != (key, sort):
+            if self.history[-1][0] == key:
+                self.history[-1] = (key, self.ui.sort.currentIndex())
+            else:
+                self.history.append((key, self.ui.sort.currentIndex()))
 
         if not self.ui.list.verticalScrollBar().isVisible() and self.cur_page < self.total_pages:
-            self.page(self.location, self.cur_page, self.container_size, sort=sort, params=params)
+            self._page(key, self.cur_page, self.container_size, sort=sort, params=params)
 
-    def endless_scroll(self, value):
+    def _endless_scroll(self, value):
         if value >= self.ui.list.verticalScrollBar().maximum() * 0.9:
             if self.cur_page < self.total_pages:
-                sort = self.ui.sort.itemData(self.ui.sort.currentIndex())
-                self.page(self.location, self.cur_page, self.container_size, sort=sort, params=self.params)
+                key, sort = self.location
+                self._page(key, self.cur_page, self.container_size, sort=sort, params=self.params)
 
-    def page(self, key, page=0, size=20, sort=None, params={}):
+    def _page(self, key, page=0, size=20, sort=0, params={}):
         self.cur_page += 1
-        self.operate.emit(self.server, key, page, size, sort, params)
+        self.operate.emit(self.server, key, page, size, self.ui.sort.itemData(sort), params)
 
-    def update_list(self, container):
+    def _update_list(self, container):
         if self.ui.list.count() > 0:
             self.ui.list.reset()
         self.ui.list.add_container(container)
-        self.total_pages = math.ceil(container['totalSize']/self.container_size)
+        self.total_pages = math.ceil(container['totalSize'] / self.container_size)
         self.update_title()
-        self.update_path(container.get('title1', self.location.split('/')[-2]),
-                         container.get('title2', self.location.split('/')[-1]))
+        self.update_path(container.get('title1', self.location[0].split('/')[-2]),
+                         container.get('title2', self.location[0].split('/')[-1]))
 
     def update_path(self, t1, t2):
         self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
 
     def update_title(self):
-        self.setWindowTitle('{}: {}'.format(self.server.name, self.location))
+        self.setWindowTitle('{}: {}'.format(self.server.name, self.location[0]))
 
     def mousePressEvent(self, event):
         if event.buttons() & Qt.BackButton:
