@@ -50,7 +50,7 @@ class PhotoViewer(QWidget):
         self.cur_img_data = None
         self.timer = QTimer()
         self.timer.setSingleShot(True)
-        self.timer.setInterval(500)
+        self.timer.setInterval(200)
         self.timer.timeout.connect(self.ui.image_label.refresh)
 
         self.ui.btn_prev.pressed.connect(self.prev)
