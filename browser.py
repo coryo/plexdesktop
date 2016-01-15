@@ -109,6 +109,7 @@ class Browser(QWidget):
         self.mpvplayer = MPVPlayer()
         self.ui.indicator.show()
         self.mpvplayer.playback_started.connect(self.ui.indicator.hide)
+        self.mpvplayer.player_stopped.connect(self.ui.indicator.hide)
 
     def destroy_player(self):
         self.mpvplayer = None
