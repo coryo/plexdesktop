@@ -1,10 +1,10 @@
-import time
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QWidget, QInputDialog
 from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
 import player_ui
 from settings import Settings
 import utils
 import mpv
+import plexdevices
 
 class MpvEventLoop(QObject):
     mpvevent = pyqtSignal(dict)
@@ -23,9 +23,31 @@ class MpvEventLoop(QObject):
                 break
 
 
+class TimelineUpdater(QObject):
+    done = pyqtSignal()
+
+    def update(self, play_queue, item, time, headers, state='playing'):
+        if item is None or 'playQueueItemID' not in item:
+            self.done.emit()
+            return
+        code, res = play_queue.server.request('/:/timeline', headers=headers, params={
+            'state': state,
+            'identifier': play_queue['identifier'],
+            'playQueueItemID': item['playQueueItemID'],
+            'ratingKey': item['ratingKey'],
+            'duration': item['duration'],
+            'time': min(time, item['duration'])
+        })
+        print('TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(time),
+                                           utils.timestamp_from_ms(item['duration']),
+                                           code))
+        self.done.emit()
+
+
 class MPVPlayer(QWidget):
     player_stopped = pyqtSignal(int)
     playback_started = pyqtSignal()
+    update_timeline = pyqtSignal(plexdevices.PlayQueue, plexdevices.MediaObject, int, dict, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -91,6 +113,12 @@ class MPVPlayer(QWidget):
         self._event_thread.started.connect(self.event_loop.run)
         self._event_thread.start()
         ########
+        self._timeline_thread = QThread()
+        self.timeline_updater = TimelineUpdater()
+        self.timeline_updater.moveToThread(self._timeline_thread)
+        self.update_timeline.connect(self.timeline_updater.update, type=Qt.QueuedConnection)
+        self._timeline_thread.start()
+
 
         self.settings = Settings()
         self.last_volume = int(self.settings.value('last_volume', 0))
@@ -123,7 +151,6 @@ class MPVPlayer(QWidget):
         if eventid in self._event_handlers:
             self._event_handlers[eventid](event)
 
-
     def do_nothing(self, event):
         pass
 
@@ -137,17 +164,19 @@ class MPVPlayer(QWidget):
         self.player_stopped.emit(self.ui.slider_progress.value())
 
     def do_end_file(self, event):
-        print('end file')
-        self.update_timeline(state='paused')
-        self.update_timeline(state='stopped')
+        self.do_timeline_update(state='paused')
+        self.do_timeline_update(state='stopped')
 
     def do_pause(self, event):
         self.paused = True
-        self.update_timeline(state='paused')
+        self.do_timeline_update(state='paused')
 
     def do_unpause(self, event):
         self.paused = False
-        self.update_timeline(state='playing')
+        self.do_timeline_update(state='playing')
+
+    def do_timeline_update(self, state):
+        self.update_timeline.emit(self.play_queue, self.current_item, self.ui.slider_progress.value(), self.headers, state)
 
     def do_playback_restart(self, event):
         self.show()
@@ -176,7 +205,7 @@ class MPVPlayer(QWidget):
         elif event['name'] == 'playback-time':
             self._playback_time_count += 1
             if self._playback_time_count == 500:
-                self.update_timeline('playing')
+                self.do_timeline_update('playing')
                 self._playback_time_count = 0
             if not self.ui.slider_progress.isSliderDown():
                 ms = event['data']*1000
@@ -207,7 +236,22 @@ class MPVPlayer(QWidget):
         if 'viewOffset' not in self.current_item:
             self.current_item['viewOffset'] = 0
 
-        url = self.current_item.resolve_url()
+        self.available_streams = self.current_item.get_all_keys()
+        if len(self.available_streams) == 1:
+            # theres only one item
+            resolution, key = self.available_streams[0]
+            url = self.current_item.resolve_key(key)
+        else:
+            # there are multiple items, prompt for a selection
+            items = (x[0] for x in self.available_streams)
+            choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()', 'Stream:', items, 0, False)
+            if ok:
+                key = [x[1] for x in self.available_streams if x[0] == choice]
+                url = self.current_item.resolve_key(key[0])
+            else:
+                self.close()
+                return
+
         self.mpv.play(url)
 
     def pause(self):
@@ -215,7 +259,7 @@ class MPVPlayer(QWidget):
 
     def seek(self):
         self.mpv.seek(self.ui.slider_progress.value()/1000, 'absolute')
-        self.update_timeline('playing')
+        self.do_timeline_update('playing')
 
     def volume(self):
         delta = self.ui.slider_volume.value() - self.last_volume
@@ -228,25 +272,12 @@ class MPVPlayer(QWidget):
         else:
             self.ui.control_bar.show()
 
-    def update_timeline(self, state='playing'):
-        if self.current_item is None or 'playQueueItemID' not in self.current_item:
-            return
-        code, res = self.play_queue.server.request('/:/timeline', headers=self.headers, params={
-            'state': state,
-            'identifier': self.play_queue['identifier'],
-            'playQueueItemID': self.current_item['playQueueItemID'],
-            'ratingKey': self.current_item['ratingKey'],
-            'duration': self.current_item['duration'],
-            'time': min(self.ui.slider_progress.value(), self.current_item['duration'])
-        })
-        print('TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(self.ui.slider_progress.value()),
-                                           utils.timestamp_from_ms(self.current_item['duration']),
-                                           code))
-
     # QT EVENTS ################################################################
     def closeEvent(self, event):
-        self.update_timeline(state='stopped')
+        self.do_timeline_update(state='stopped')
         self.mpv.quit()
+        self._timeline_thread.quit()
+        self._timeline_thread.wait()
 
     def wheelEvent(self, event):
         degrees = event.angleDelta().y() / 8
