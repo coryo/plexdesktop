@@ -1,6 +1,6 @@
 import time
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject
+from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
 import player_ui
 from settings import Settings
 import utils
@@ -28,9 +28,16 @@ class MPVPlayer(QWidget):
     playback_started = pyqtSignal()
 
     def __init__(self, parent=None):
-        super(MPVPlayer, self).__init__(parent)
+        super().__init__(parent)
         self.ui = player_ui.Ui_Player()
         self.ui.setupUi(self)
+
+        self.ui.player_widget.setMouseTracking(True)
+        self.setMouseTracking(True)
+        self.cursor_timer = QTimer()
+        self.cursor_timer.setSingleShot(True)
+        self.cursor_timer.setInterval(1000)
+        self.cursor_timer.timeout.connect(self.hide_cursor)
 
         self._event_handlers = {
             mpv.MpvEventID.NONE:                  self.do_nothing,
@@ -177,6 +184,9 @@ class MPVPlayer(QWidget):
                 self.ui.slider_progress.setSliderPosition(ms)
     ############################################################################
 
+    def hide_cursor(self):
+        self.setCursor(Qt.BlankCursor)
+
     def update_current_time(self, value):
         self.ui.lbl_current_time.setText(utils.timestamp_from_ms(milliseconds=value))
 
@@ -250,6 +260,8 @@ class MPVPlayer(QWidget):
             event.accept()
 
     def mouseMoveEvent(self, event):
+        self.unsetCursor()
+        self.cursor_timer.start()
         if event.buttons() & Qt.LeftButton:
             if not self.isFullScreen() and self.drag_position is not None: # window dragging
                 self.move(event.globalPos() - self.drag_position)
