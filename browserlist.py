@@ -111,7 +111,9 @@ class BrowserListItem(QListWidgetItem):
             elif view_group == 'album':
                 t = '{} - {}'.format(self.media['parentTitle'], self.media['title'])
             elif view_group == 'track':
-                t = '{} - {}'.format(self.media['index'], self.media['title'])
+                t = self.media['title']
+                if 'index' in self.media:
+                    t = self.media['index'] + ' - ' + t
             else:
                 if item_type == 'episode':
                     t = '{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
@@ -167,7 +169,7 @@ class BrowserListItem(QListWidgetItem):
 
     def resize_icon(self, size):
         if self.thumb is not None:
-            self.setIcon(QIcon(self.thumb.scaled(size, Qt.KeepAspectRatio)))
+            self.setIcon(QIcon(self.thumb.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
         self.update_bg()
 
 
