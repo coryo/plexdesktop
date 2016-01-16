@@ -2,8 +2,9 @@ from PyQt5.QtWidgets import QLabel
 from PyQt5.QtCore import Qt, QSize, QBuffer
 from PyQt5.QtGui import QPixmap, QImageReader
 
+
 class AspectRatioLabel(QLabel):
-    
+
     def __init__(self, parent=None):
         super().__init__()
         self.setMinimumSize(1, 1)
@@ -23,7 +24,7 @@ class AspectRatioLabel(QLabel):
         self.setPixmap(QPixmap.fromImage(self.reader.read()))
 
     def new_height(self, original_size, new_width):
-        return (original_size.height()/original_size.width()) * new_width
+        return (original_size.height() / original_size.width()) * new_width
 
     def refresh(self):
         self.set_pixmap_from_data(self.img_data)

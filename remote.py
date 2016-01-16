@@ -5,6 +5,7 @@ import plexdevices
 import remote_ui
 from settings import Settings
 
+
 class PlexRemote(QObject, plexdevices.Remote):
     """subclass plexdevices.Remote and QObject to add signal"""
     timeline_signal = pyqtSignal(str)
@@ -50,7 +51,7 @@ class Remote(QWidget, remote_ui.Ui_Remote):
         self.remote.timeline_unsubscribe()
 
     def seek(self):
-        self.remote.seek(self.progress.value()*1000)
+        self.remote.seek(self.progress.value() * 1000)
 
     def tl_handler(self, data):
         try:
@@ -58,10 +59,10 @@ class Remote(QWidget, remote_ui.Ui_Remote):
             if t is None:
                 return
             self.lbl_timeline.setText(str(t))
-            tlmax = int(t.get('duration', 1000))//1000
+            tlmax = int(t.get('duration', 1000)) // 1000
             if self.progress.maximum() != tlmax:
                 self.progress.setMaximum(tlmax)
-            self.progress.setSliderPosition(int(t.get('time', 0))//1000)
+            self.progress.setSliderPosition(int(t.get('time', 0)) // 1000)
 
             if 'key' not in t or 'machineIdentifier' not in t:
                 return
@@ -69,7 +70,7 @@ class Remote(QWidget, remote_ui.Ui_Remote):
             if self.key != key:
                 try:
                     server = [s for s in self.session.servers if s.client_identifier == mid][0]
-                    self.updateData(server, key)               
+                    self.updateData(server, key)
                 except Exception as e:
                     print('metadata ' + str(e))
         except Exception as e:

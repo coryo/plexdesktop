@@ -5,9 +5,10 @@ from PyQt5.QtCore import pyqtSignal, QObject, QSize, Qt, QObject, QThread, QSett
 from sqlcache import SqlCache
 import plexdevices
 
+
 class BrowserList(QListWidget):
     resize_signal = pyqtSignal()
-    iconSizeChanged = pyqtSignal(QSize) # object has no attribute 'iconSizeChanged' on linux ?
+    iconSizeChanged = pyqtSignal(QSize)  # object has no attribute 'iconSizeChanged' on linux ?
     viewModeChanged = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -137,20 +138,20 @@ class BrowserListItem(QListWidgetItem):
         try:
             vo = int(self.media['viewOffset']) if offset is None else offset
             x = int(vo / int(self.media['duration']) * 100)
-            xpm_colours = ["a c #D9D9D9", # dark color
-                           "b c #FFFFFF"] # light
+            xpm_colours = ["a c #D9D9D9",  # dark color
+                           "b c #FFFFFF"]  # light
             if self.listWidget().bg_vertical:
                 xpm = ["1 100 2 1"]
                 xpm += xpm_colours
-                xpm += (list("a"*x) + list("b"*(100-x)))
+                xpm += (list("a" * x) + list("b" * (100 - x)))
                 self.setBackground(QBrush(QPixmap(xpm).scaled(1, self.listWidget().sizeHintForRow(0))))
             else:
                 xpm = ["100 1 2 1"]
                 xpm += xpm_colours
-                pixels = ("a"*x + "b"*(100-x))
+                pixels = ("a" * x + "b" * (100 - x))
                 xpm.append(pixels)
                 self.setBackground(QBrush(QPixmap(xpm).scaled(self.listWidget().width(), 1)))
-            
+
         except Exception as e:
             print(str(e))
 

@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 from PyQt5.QtCore import QObject, pyqtSignal
 
+
 class SqlCache(QObject):
 
     def __init__(self, name, access=True, parent=None):
@@ -23,7 +24,7 @@ class SqlCache(QObject):
         if r is not None:
             if self.access:
                 c.execute('UPDATE cache SET accessed = strftime("%s", "now") WHERE key = ?', (khash,))
-            return r[0] 
+            return r[0]
         else:
             return None
 
@@ -45,7 +46,7 @@ class SqlCache(QObject):
     def __contains__(self, key):
         c = self.conn.cursor()
         c.execute('select rowid from cache where key = ?',
-                       (hashlib.md5(key.encode('utf-8')).hexdigest(),))
+                  (hashlib.md5(key.encode('utf-8')).hexdigest(),))
         return bool(c.fetchone())
 
     def save(self):
@@ -62,7 +63,6 @@ class SqlCache(QObject):
             q = ('CREATE TABLE IF NOT EXISTS cache '
                  '(key text UNIQUE, value blob, PRIMARY KEY(key))')
         c.execute(q)
-
 
     def remove(self, n):
         c = self.conn.cursor()

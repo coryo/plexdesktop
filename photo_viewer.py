@@ -5,6 +5,7 @@ from photo_viewer_ui import Ui_PhotoViewer
 from settings import Settings
 from sqlcache import SqlCache
 
+
 class ImgWorker(QObject):
     signal = pyqtSignal(bytes)
     finished = pyqtSignal()
@@ -69,7 +70,7 @@ class PhotoViewer(QWidget):
         self.next_button.emit()
 
     def prev(self):
-        self.prev_button.emit()        
+        self.prev_button.emit()
 
     def load_image(self, media_object):
         self.setWindowTitle(media_object['title'])
@@ -86,7 +87,7 @@ class PhotoViewer(QWidget):
         self.ui.image_label.adjustSize()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton: # window dragging
+        if event.button() == Qt.LeftButton:  # window dragging
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
         elif event.button() == Qt.BackButton:
@@ -96,7 +97,7 @@ class PhotoViewer(QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.LeftButton:
-            if not self.isFullScreen() and self.drag_position is not None: # window dragging
+            if not self.isFullScreen() and self.drag_position is not None:  # window dragging
                 self.move(event.globalPos() - self.drag_position)
                 event.accept()
 

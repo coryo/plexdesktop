@@ -6,6 +6,7 @@ from browser import Browser
 from remote import Remote
 from settings import Settings
 
+
 class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
 
     def __init__(self, parent=None):
@@ -16,9 +17,9 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.browsers = []
         self.session = None
 
-        self.btn_login.clicked.connect(self.newSession)
-        self.btn_remote.clicked.connect(self.newRemote)
-        self.btn_browser.clicked.connect(self.newBrowser)
+        self.btn_login.clicked.connect(self.create_session)
+        self.btn_remote.clicked.connect(self.create_remote)
+        self.btn_browser.clicked.connect(self.create_browser)
         self.btn_browser.clicked.connect(self.close)
 
         settings = Settings()
@@ -29,19 +30,19 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         settings = Settings()
         try:
             self.session = pickle.loads(settings.value('session'))
-            self.updateUi()
+            self.update_ui()
         except Exception as e:
             print(str(e))
 
-    def newSession(self):
+    def create_session(self):
         sender = self.sender()
         settings = Settings()
         settings.setValue('user', self.user.text().strip())
         self.session = plexdevices.Session(user=self.user.text().strip(),
-                                    password=self.password.text().strip())
+                                           password=self.password.text().strip())
         try:
             self.session.refresh_devices()
-        except plexdevices.exceptions.PlexTVError as e:
+        except plexdevices.PlexTVError as e:
             print(str(e))
             return
         try:
@@ -49,9 +50,9 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         except Exception as e:
             print(str(e))
             return
-        self.updateUi()
+        self.update_ui()
 
-    def updateUi(self):
+    def update_ui(self):
         self.players.clear()
         self.servers.clear()
         for i, item in enumerate(self.session.players):
@@ -59,7 +60,7 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             self.btn_remote.setEnabled(True)
         for i, item in enumerate(self.session.servers):
             self.servers.addItem('{} - {}'.format(item.name, item.product), i)
-            self.btn_browser.setEnabled(True)          
+            self.btn_browser.setEnabled(True)
 
     def enable_remote(self):
         self.btn_remote.setEnabled(True)
@@ -67,7 +68,7 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
     def enable_browser(self):
         self.btn_browser.setEnabled(True)
 
-    def newRemote(self):
+    def create_remote(self):
         try:
             port = self.remotes[-1].port + 1
         except Exception:
@@ -75,11 +76,11 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         try:
             remote = Remote(self.session, self.session.players[self.players.currentIndex()],
                             port=port)
-        except plexdevices.exceptions.DeviceConnectionsError as e:
+        except plexdevices.DeviceConnectionsError as e:
             print(str(e))
         else:
             self.remotes.append(remote)
 
-    def newBrowser(self):
+    def create_browser(self):
         b = Browser(self.session, self.session.servers[self.servers.currentIndex()])
         self.browsers.append(b)

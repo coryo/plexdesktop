@@ -9,6 +9,7 @@ from photo_viewer import PhotoViewer
 import plexdevices
 import utils
 
+
 class ContainerWorker(QObject):
     done = pyqtSignal(plexdevices.MediaContainer)
     finished = pyqtSignal()
@@ -143,7 +144,7 @@ class Browser(QWidget):
             self.ui.lbl_metadata.clear()
             return
         elements = ['title', 'summary', 'year', 'duration', 'rating', 'viewOffset']
-        data = {k:v for k, v in media_object.data.items() if k in elements}
+        data = {k: v for k, v in media_object.data.items() if k in elements}
         if 'duration' in data:
             d = utils.timestamp_from_ms(int(data['duration']))
             if 'viewOffset' in data:
@@ -178,11 +179,11 @@ class Browser(QWidget):
         menu.addAction(main_action)
 
         if item.media.has_parent:
-            open_action = QAction('goto: '+item.media.parent_name, menu)
+            open_action = QAction('goto: ' + item.media.parent_name, menu)
             open_action.triggered.connect(self.action_open_parent)
             menu.addAction(open_action)
         if item.media.has_grandparent:
-            open_action = QAction('goto: '+item.media.grandparent_name, menu)
+            open_action = QAction('goto: ' + item.media.grandparent_name, menu)
             open_action.triggered.connect(self.action_open_grandparent)
             menu.addAction(open_action)
 
@@ -297,7 +298,7 @@ class Browser(QWidget):
     def data(self, item=None, key=None, history=True, sort=0, params={}):
         key = key if item is None else item.media['key']
         if not key.startswith('/'):
-            key = self.location[0]+'/'+key
+            key = self.location[0] + '/' + key
         print(key)
 
         self.ui.sort.setCurrentIndex(sort)
