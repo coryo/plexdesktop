@@ -1,4 +1,5 @@
-from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
+                             QCheckBox, QComboBox, QLineEdit)
 from PyQt5.QtCore import Qt, QSize, QBuffer
 from PyQt5.QtGui import QPixmap, QImageReader
 
@@ -42,3 +43,48 @@ class AspectRatioLabel(QLabel):
 
     def resizeEvent(self, event):
         super().setPixmap(self.pix.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+
+class PreferencesObjectDialog(QDialog):
+
+    def __init__(self, media_object, parent=None):
+        super().__init__(parent)
+        self.form = QFormLayout(self)
+        settings = media_object.parent.server.container(media_object['key'])
+        self.ids = []
+        for item in settings['_children']:
+            itype = item['type']
+            if itype == 'bool':
+                input_widget = QCheckBox()
+                input_widget.setCheckState(Qt.Checked if item['value'] == 'true' else Qt.Unchecked)
+            elif itype == 'enum':
+                input_widget = QComboBox()
+                input_widget.addItems(item['values'].split('|'))
+                input_widget.setCurrentIndex(int(item['value']))
+            elif itype == 'text':
+                input_widget = QLineEdit(item['value'])
+                if item['secure'] == 'true':
+                    input_widget.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+            else:
+                input_widget = QLabel('...')
+            self.form.addRow(QLabel(item['label']), input_widget)
+            self.ids.append((item['id'], input_widget))
+
+        self.extract_values()
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.form.addRow(self.buttons)
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self.accept)
+        if self.exec_() == QDialog.Accepted:
+            media_object.parent.server.request(media_object['key'] + '/set', params=self.extract_values())
+
+    def extract_values(self):
+        values = {}
+        for pid, widget in self.ids:
+            if isinstance(widget, QLineEdit):
+                values[pid] = widget.text()
+            elif isinstance(widget, QComboBox):
+                values[pid] = widget.currentIndex()
+            elif isinstance(widget, QCheckBox):
+                values[pid] = 'true' if widget.checkState() == Qt.Checked else 'false'
+        return values

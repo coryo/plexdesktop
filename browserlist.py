@@ -45,13 +45,12 @@ class DetailsViewDelegate(QStyledItemDelegate):
                                            Qt.AlignLeft | Qt.TextWordWrap,
                                            option.palette, True, title_text)
         painter.restore()
-
         # Watched
         if data.is_video and not data.watched and not data.in_progress:
-            rect = QRect(title_rect.topRight(), title_rect.bottomRight()+QPoint(title_rect.height(), 0))
-            point = title_rect.topRight() + QPoint(QFontMetrics(title_font).height(), title_rect.height()/2)
+            rect = QRect(title_rect.topRight(), title_rect.bottomRight() + QPoint(title_rect.height(), 0))
+            point = title_rect.topRight() + QPoint(QFontMetrics(title_font).height(), title_rect.height() / 2)
             painter.save()
-            painter.setBrush(QBrush(QColor(204, 123, 25))) #204,123,25
+            painter.setBrush(QBrush(QColor(204, 123, 25)))
             painter.drawEllipse(point, 5, 5)
             painter.restore()
 
@@ -177,7 +176,7 @@ class ListModel(QAbstractListModel):
             self.dataChanged.emit(index, index, [Qt.DecorationRole])
 
     def canFetchMore(self, index):
-        return (False if self.container is None else
+        return (False if self.container is None or not len(self.container.children) else
                 len(self.container.children) < int(self.container.get('totalSize', 0)))
 
     def fetchMore(self, parent):

@@ -1,5 +1,5 @@
 import math
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QListView
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QListView, QDialog, QDialogButtonBox, QLabel, QFormLayout, QCheckBox, QComboBox, QLineEdit
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -8,6 +8,7 @@ from player import MPVPlayer
 from photo_viewer import PhotoViewer
 import plexdevices
 import utils
+from extra_widgets import PreferencesObjectDialog
 
 
 class Browser(QWidget):
@@ -147,6 +148,9 @@ class Browser(QWidget):
         elif item.is_photo:
             main_action = QAction('View Photo', menu)
             main_action.triggered.connect(self.action_play_photo)
+        elif item.is_settings:
+            main_action = QAction('Open', menu)
+            main_action.triggered.connect(self.action_settings)
         else:
             main_action = QAction('Open', menu)
             main_action.triggered.connect(self.action_open)
@@ -172,6 +176,9 @@ class Browser(QWidget):
 
         if not menu.isEmpty():
             menu.exec_(QCursor.pos())
+
+    def action_settings(self):
+        self.preferences_prompt(self.ui.list.currentItem())
 
     def action_play(self):
         self.play_list_item(self.ui.list.currentItem())
@@ -244,6 +251,10 @@ class Browser(QWidget):
         self.image_viewer.load_image(item)
         self.image_viewer.show()
 
+    def preferences_prompt(self, item):
+        print('settings')
+        dialog = PreferencesObjectDialog(item, parent=self)
+
     def search_prompt(self, item):
         text, ok = QInputDialog.getText(self, 'Search', 'query:')
         if ok:
@@ -256,6 +267,8 @@ class Browser(QWidget):
             self.play_list_item_photo(item)
         elif item.is_input:
             self.search_prompt(item)
+        elif item.is_settings:
+            self.preferences_prompt(item)
         else:
             self.data(item=item)
 
