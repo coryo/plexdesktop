@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Browser(object):
     def setupUi(self, Browser):
         Browser.setObjectName("Browser")
-        Browser.resize(334, 345)
+        Browser.resize(345, 345)
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(Browser)
         self.verticalLayout_2.setContentsMargins(4, 4, 4, 4)
         self.verticalLayout_2.setSpacing(2)
@@ -134,7 +134,7 @@ class Ui_Browser(object):
         self.btn_view_mode.setObjectName("btn_view_mode")
         self.horizontalLayout_2.addWidget(self.btn_view_mode)
         self.verticalLayout_2.addLayout(self.horizontalLayout_2)
-        self.list = BrowserList(Browser)
+        self.list = ListView(Browser)
         self.list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list.setObjectName("list")
         self.verticalLayout_2.addWidget(self.list)
@@ -194,4 +194,4 @@ class Ui_Browser(object):
         self.btn_view_mode.setText(_translate("Browser", "::"))
         self.btn_metadata.setText(_translate("Browser", "v"))
 
-from browserlist import BrowserList
+from browserlist import ListView

@@ -13,7 +13,7 @@ class SqlCache(QObject):
         self.access = access
 
     def open(self):
-        self.conn = sqlite3.connect('cache_{}.db'.format(self.name))
+        self.conn = sqlite3.connect('cache_{}.db'.format(self.name), check_same_thread=False)
         self.create()
 
     def __getitem__(self, key):

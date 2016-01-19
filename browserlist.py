@@ -1,207 +1,295 @@
 import hashlib
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QListView
-from PyQt5.QtGui import QPixmap, QIcon, QBrush, QPixmapCache, QColor
-from PyQt5.QtCore import pyqtSignal, QObject, QSize, Qt, QObject, QThread, QSettings
+from PyQt5.QtWidgets import (QListView, QStyledItemDelegate, QApplication,
+                             QStyle, QAbstractItemView, QStyleOptionProgressBar)
+from PyQt5.QtGui import (QPixmap, QBrush, QPixmapCache, QColor, QPalette, QFont,
+                         QFontMetrics)
+from PyQt5.QtCore import (pyqtSignal, QObject, QSize, Qt, QObject, QThread,
+                          QAbstractListModel, QModelIndex, QRect, QPoint, QVariant)
 from sqlcache import SqlCache
 import plexdevices
+import utils
 
 
-class BrowserList(QListWidget):
-    resize_signal = pyqtSignal()
-    iconSizeChanged = pyqtSignal(QSize)  # object has no attribute 'iconSizeChanged' on linux ?
-    viewModeChanged = pyqtSignal()
+class DetailsViewDelegate(QStyledItemDelegate):
+
+    def paint(self, painter, option, index):
+        data = index.data(role=Qt.UserRole)
+        padding = 5
+        title_font = QFont(option.font.family(), 9, weight=QFont.Bold)
+        summary_font = QFont(option.font.family(), 7)
+        # Background
+        if option.state & QStyle.State_Selected or option.state & QStyle.State_MouseOver:
+            brush = QApplication.palette().highlight()
+            color = QApplication.palette().highlight().color()
+            color.setAlpha(32)
+            brush.setColor(color)
+            painter.save()
+            painter.fillRect(option.rect, brush)
+            painter.restore()
+        # Icon
+        thumb = index.data(role=Qt.DecorationRole)
+        if thumb is not None and not thumb.isNull():
+            option.widget.style().drawItemPixmap(painter, option.rect,
+                                                 Qt.AlignLeft | Qt.AlignVCenter,
+                                                 thumb)
+        # Title Line
+        painter.save()
+        title_text = utils.title(data)
+        painter.setFont(title_font)
+        title_rect = QRect(option.rect.topLeft() + QPoint(thumb.width() + padding, 0),
+                           option.rect.bottomRight())
+        title_rect = option.widget.style().itemTextRect(QFontMetrics(title_font),
+                                                        title_rect, Qt.AlignLeft,
+                                                        True, title_text)
+        option.widget.style().drawItemText(painter, title_rect,
+                                           Qt.AlignLeft | Qt.TextWordWrap,
+                                           option.palette, True, title_text)
+        painter.restore()
+
+        # Watched
+        if data.is_video and not data.watched and not data.in_progress:
+            rect = QRect(title_rect.topRight(), title_rect.bottomRight()+QPoint(title_rect.height(), 0))
+            point = title_rect.topRight() + QPoint(QFontMetrics(title_font).height(), title_rect.height()/2)
+            painter.save()
+            painter.setBrush(QBrush(QColor(204, 123, 25))) #204,123,25
+            painter.drawEllipse(point, 5, 5)
+            painter.restore()
+
+        # Summary text
+        if 'summary' in data:
+            painter.save()
+            summary_text = data['summary']
+            painter.setFont(summary_font)
+            summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
+            option.widget.style().drawItemText(painter, summary_rect,
+                                               Qt.AlignLeft | Qt.TextWordWrap,
+                                               option.palette, True, summary_text)
+            painter.restore()
+        # Progress bar
+        if 'viewOffset' in data and 'duration' in data:
+            painter.save()
+            painter.setFont(summary_font)
+            progress = QStyleOptionProgressBar()
+            progress.rect = QRect(option.rect.bottomLeft() - QPoint(-thumb.width() - padding,
+                                  QFontMetrics(painter.font()).height()), option.rect.bottomRight())
+            progress.maximum = 100
+            progress.progress = 100 * int(data['viewOffset']) / int(data['duration'])
+            progress.textAlignment = Qt.AlignHCenter | Qt.AlignVCenter
+            progress.text = (utils.timestamp_from_ms(int(data['viewOffset'])) + " / " +
+                             utils.timestamp_from_ms(int(data['duration'])))
+            progress.textVisible = True
+            option.widget.style().drawControl(QStyle.CE_ProgressBar, progress, painter)
+            painter.restore()
+
+    def sizeHint(self, option, index):
+        data = index.data(role=Qt.UserRole)
+        return QSize(400, index.model().parent().iconSize().height() + 2 * 2)
+
+
+class ListModel(QAbstractListModel):
+    operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
+    new_item = pyqtSignal(plexdevices.MediaObject, int)
+    working = pyqtSignal()
+    done = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.setIconSize(QSize(32, 32))
+        super().__init__(parent)
+        self._worker_thread = QThread()
+        self._worker = ContainerWorker()
+        self._thumb_worker = ThumbWorker()
+
+        self._thumb_worker.moveToThread(self._worker_thread)
+        self._thumb_worker.result_ready.connect(self._update_thumb)
+        self._worker_thread.started.connect(self._thumb_worker.save_cache)
+        self.new_item.connect(self._thumb_worker.do_work, type=Qt.QueuedConnection)
+        self._worker.moveToThread(self._worker_thread)
+        self.operate.connect(self._worker.run, type=Qt.QueuedConnection)
+        self._worker.done.connect(self._add_container)
+        self.operate.connect(self._working)
+        self._worker.finished.connect(self._done)
+
+    def _working(self):
+        self.working.emit()
+
+    def _done(self):
+        t1, t2 = self.container.get('title1', ''), self.container.get('title2', '')
+        self.done.emit(t1, t2)
+
+    def _close(self):
+        self._worker_thread.quit()
+        self._worker_thread.wait()
+
+    def _add_container(self, container):
+        if self.container is None:
+            start_len = 0
+            self.container = container
+            self.endResetModel()
+        else:
+            start_len = len(self.container.children)
+            self.container.children += container.children
+
+            self.endInsertRows()
+
+        for i, item in enumerate(container.children):
+            if 'thumb' in item:
+                self.new_item.emit(item, i + start_len)
+
+    def _update_thumb(self, img, i):
+        self.setData(self.index(i), img, role=Qt.DecorationRole)
+
+    def set_container(self, server, key, page=0, size=50, sort="", params={}):
+        self.beginResetModel()
+        self.server = server
+        self.key = key
+        self.page = page
+        self.container_size = size
+        self.sort = sort
+        self.params = params
+        self.container = None
+        self._worker_thread.quit()
+        self._worker_thread.wait()
+        self._worker_thread.start()
+        self.operate.emit(self.server, self.key, self.page, self.container_size,
+                          self.sort, self.params)
+        self.page += 1
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if self.container is None else len(self.container)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if self.container is None:
+            return QVariant()
+        if role == Qt.DisplayRole:
+            return self.container.children[index.row()]['title']
+        elif role == Qt.UserRole:
+            return self.container.children[index.row()]
+        elif role == Qt.DecorationRole:
+            img = self.container.children[index.row()].get('icon', QPixmap())
+            return (img if img.isNull() else
+                    self.container.children[index.row()]['icon'].scaled(
+                        self.parent().iconSize(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def setData(self, index, value, role):
+        if index.data(role=Qt.UserRole) is None:
+            return
+        if role == Qt.DecorationRole:
+            index.data(role=Qt.UserRole)['icon'] = value
+            self.dataChanged.emit(index, index, [Qt.DecorationRole])
+
+    def canFetchMore(self, index):
+        return (False if self.container is None else
+                len(self.container.children) < int(self.container.get('totalSize', 0)))
+
+    def fetchMore(self, parent):
+        start_len = len(self.container.children)
+        remaining = self.container['totalSize'] - len(self.container.children)
+        items_to_fetch = min(self.container_size, remaining)
+        self.beginInsertRows(QModelIndex(), len(self.container.children),
+                             len(self.container.children) + items_to_fetch - 1)
+        self._worker_thread.quit()
+        self._worker_thread.wait()
+        self._worker_thread.start()
+        self.operate.emit(self.server, self.key, self.page, self.container_size,
+                          self.sort, self.params)
+        self.page += 1
+
+
+class ListView(QListView):
+    resize_signal = pyqtSignal()
+    viewModeChanged = pyqtSignal()
+    itemDoubleClicked = pyqtSignal(plexdevices.MediaObject)
+    itemSelectionChanged = pyqtSignal(plexdevices.MediaObject)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.delegate = DetailsViewDelegate()
+        self.setItemDelegate(self.delegate)
+        self.doubleClicked.connect(self.double_click)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setResizeMode(QListView.Adjust)
-        self.setUniformItemSizes(True)
+        self.icon_size(48)
+        self.setAlternatingRowColors(True)
 
-        self.bg_vertical = False
-
-        self.current_container = None
-
-        self._thumb_thread = QThread()
-        self._cache = SqlCache('thumb', access=False)
-        self._cache.moveToThread(self._thumb_thread)
-        self._thumb_thread.started.connect(self._cache.open)
-        self._thumb_thread.finished.connect(self._cache.save)
+        self.model = ListModel(parent=self)
+        self.setModel(self.model)
 
     def toggle_view_mode(self):
         if self.viewMode() == QListView.ListMode:
             self.setViewMode(QListView.IconMode)
             self.bg_vertical = True
+            self.setAlternatingRowColors(False)
         else:
             self.setViewMode(QListView.ListMode)
             self.bg_vertical = False
+            self.setAlternatingRowColors(True)
         self.viewModeChanged.emit()
 
     def icon_size(self, x):
-        self.setIconSize(QSize(x, x))
+        self.last_icon_size = QSize(x, x)
+        self.setIconSize(self.last_icon_size)
 
-    def setIconSize(self, size):
-        # reimplemented because linux was being weird
-        super().setIconSize(size)
-        self.iconSizeChanged.emit(size)
+    def add_container(self, server, key, page=0, size=50, sort="", params={}):
+        self.model.set_container(server, key, page, size, sort, params)
+
+    def double_click(self, index):
+        self.itemDoubleClicked.emit(index.data(role=Qt.UserRole))
+
+    def selectionChanged(self, selected, deselected):
+        super().selectionChanged(selected, deselected)
+        indexes = selected.indexes()
+        self.itemSelectionChanged.emit(indexes[0].data(role=Qt.UserRole))
+
+    def currentItem(self):
+        indexes = self.selectedIndexes()
+        return indexes[0].data(role=Qt.UserRole)
+
+    def next_item(self):
+        index = self.moveCursor(QAbstractItemView.MoveDown, Qt.NoModifier)
+        self.setCurrentIndex(index)
+
+    def prev_item(self):
+        index = self.moveCursor(QAbstractItemView.MoveUp, Qt.NoModifier)
+        self.setCurrentIndex(index)
 
     def closeEvent(self, event):
-        self.reset()
-
-    def reset(self):
-        self._thumb_thread.quit()
-        self._thumb_thread.wait()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.resize_signal.emit()
-
-    def mousePressEvent(self, event):
-        if event.buttons() & Qt.BackButton:
-            event.ignore()
-        else:
-            super().mousePressEvent(event)
-
-    def add_container(self, container):
-        self.current_container = container
-        for media_object in container.children:
-            item = BrowserListItem(media_object, thread=self._thumb_thread, cache=self._cache, parent=self)
-            self.iconSizeChanged.connect(item.resize_icon)
-            self.viewModeChanged.connect(item.update_bg)
-            self.resize_signal.connect(item.update_bg)
-            self.addItem(item)
+        self.model._close()
+        super().closeEvent(event)
 
 
-class BrowserListItem(QListWidgetItem):
+class ContainerWorker(QObject):
+    done = pyqtSignal(plexdevices.MediaContainer)
+    finished = pyqtSignal()
 
-    def __init__(self, media_object, thread=None, cache=None, parent=None):
-        super().__init__(parent)
-        self.media = media_object
-        self.thumb = None
-        self.setIcon(QIcon(QPixmap(300, 300)))
-
-        if self.media.get('thumb', False):
-            self.controller = Controller(thumb=True, thread=thread, cache=cache)
-            self.controller.new_item.connect(self.update_img)
-            self.controller.operate.emit(media_object)
-
-        item_type = self.media.get('type', None)
-        view_group = self.media.parent.get('viewGroup', None)
-        mixed_parents = bool(int(self.media.parent.get('mixedParents', '0')))
-        filters = bool(int(self.media.get('filters', '0')))
-        is_library = self.media.parent.get('identifier', None) == 'com.plexapp.plugins.library'
-        if filters or not is_library:
-            t = self.media['title']
-        else:
-            if view_group == 'episode':
-                t = ('{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
-                                                       int(self.media['parentIndex']),
-                                                       int(self.media['index']),
-                                                       self.media['title'])
-                     if mixed_parents else
-                     's{:02d}e{:02d} - {}'.format(int(self.media.parent['parentIndex']),
-                                                  int(self.media['index']),
-                                                  self.media['title']))
-            elif view_group == 'season':
-                t = ('{} - {}'.format(self.media.parent['parentTitle'], self.media['title'])
-                     if mixed_parents else
-                     self.media['title'])
-            elif view_group == 'secondary':
-                t = self.media['title']
-            elif view_group == 'movie':
-                t = '{} ({})'.format(self.media['title'], self.media['year'])
-            elif view_group == 'album':
-                t = '{} - {}'.format(self.media['parentTitle'], self.media['title'])
-            elif view_group == 'track':
-                t = self.media['title']
-                if 'index' in self.media:
-                    t = self.media['index'] + ' - ' + t
-            else:
-                if item_type == 'episode':
-                    t = '{} - s{:02d}e{:02d} - {}'.format(self.media['grandparentTitle'],
-                                                          int(self.media['parentIndex']),
-                                                          int(self.media['index']),
-                                                          self.media['title'])
-                elif item_type == 'season':
-                    t = '{} - {}'.format(self.media['parentTitle'], self.media['title'])
-                elif item_type == 'movie':
-                    t = '{} ({})'.format(self.media['title'], self.media['year'])
-                else:
-                    t = self.media['title']
-        self.setText(t)
-        self.update_bg()
-
-    def update_bg(self, offset=None):
-        if (('viewOffset' not in self.media) or
-                ('duration' not in self.media) or
-                (self.media['viewOffset'] == 0)):
-            return
+    def run(self, server, key, page=0, size=20, sort="", params={}):
+        p = {} if not sort else {'sort': sort}
+        if params:
+            p.update(params)
         try:
-            vo = int(self.media['viewOffset']) if offset is None else offset
-            x = int(vo / int(self.media['duration']) * 100)
-            xpm_colours = ["a c #D9D9D9",  # dark color
-                           "b c #FFFFFF"]  # light
-            if self.listWidget().bg_vertical:
-                xpm = ["1 100 2 1"]
-                xpm += xpm_colours
-                xpm += (list("a" * x) + list("b" * (100 - x)))
-                self.setBackground(QBrush(QPixmap(xpm).scaled(1, self.listWidget().sizeHintForRow(0))))
-            else:
-                xpm = ["100 1 2 1"]
-                xpm += xpm_colours
-                pixels = ("a" * x + "b" * (100 - x))
-                xpm.append(pixels)
-                self.setBackground(QBrush(QPixmap(xpm).scaled(self.listWidget().width(), 1)))
-
-        except Exception as e:
+            data = server.container(key, page=page, size=size, params=p)
+        except (plexdevices.exceptions.DeviceConnectionsError, TypeError) as e:
             print(str(e))
-
-    def update_offset(self, offset):
-        self.media['viewOffset'] = offset
-        self.update_bg(offset)
-
-    def clear_bg(self):
-        self.setBackground(QBrush(QColor(255, 255, 255)))
-
-    def update_img(self, pixmap):
-        self.controller = None
-        if not pixmap.isNull():
-            self.thumb = pixmap
-            self.resize_icon(self.listWidget().iconSize())
-
-    def resize_icon(self, size):
-        if self.thumb is not None:
-            self.setIcon(QIcon(self.thumb.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-        self.update_bg()
+        else:
+            container = plexdevices.MediaContainer(server, data)
+            self.done.emit(container)
+        self.finished.emit()
 
 
-class Controller(QObject):
-    operate = pyqtSignal(plexdevices.MediaObject)
-    new_item = pyqtSignal(QPixmap)
+class ThumbWorker(QObject):
+    result_ready = pyqtSignal(QPixmap, int)
 
-    def __init__(self, thumb=False, thread=None, cache=None, parent=None):
-        super().__init__(parent=parent)
-        self.worker_thread = thread
-        self.worker = ImgWorker(thumb, cache)
-        self.worker.moveToThread(self.worker_thread)
-        self.operate.connect(self.worker.do_work)
-        self.worker.result_ready.connect(self.handle_results)
-        self.worker_thread.start()
-
-    def handle_results(self, item):
-        self.new_item.emit(item)
-        self.worker = None
-
-
-class ImgWorker(QObject):
-    result_ready = pyqtSignal(QPixmap)
-
-    def __init__(self, thumb=False, cache=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__()
-        self.thumb = thumb
-        self.cache = cache
+        self.cache = None
 
-    def do_work(self, media_object):
-        url = media_object['thumb'] if self.thumb else media_object.resolve_url()
+    def save_cache(self):
+        if self.cache is not None:
+            self.cache.save()
+
+    def do_work(self, media_object, row):
+        if self.cache is None:
+            self.cache = SqlCache('thumb', access=False)
+            self.cache.open()
+        url = media_object['thumb']
         key = media_object.parent.server.client_identifier + url
         key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
         img = QPixmapCache.find(key_hash)
@@ -213,5 +301,5 @@ class ImgWorker(QObject):
             img = QPixmap()
             img.loadFromData(img_data)
             QPixmapCache.insert(key_hash, img)
-        self.result_ready.emit(img)
+        self.result_ready.emit(img, row)
         return

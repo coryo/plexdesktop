@@ -10,24 +10,6 @@ import plexdevices
 import utils
 
 
-class ContainerWorker(QObject):
-    done = pyqtSignal(plexdevices.MediaContainer)
-    finished = pyqtSignal()
-
-    def run(self, server, key, page=0, size=20, sort="", params={}):
-        p = {} if not sort else {'sort': sort}
-        if params:
-            p.update(params)
-        try:
-            data = server.container(key, page=page, size=size, params=p)
-        except (plexdevices.exceptions.DeviceConnectionsError, TypeError) as e:
-            print(str(e))
-        else:
-            container = plexdevices.MediaContainer(server, data)
-            self.done.emit(container)
-        self.finished.emit()
-
-
 class Browser(QWidget):
     new_image_selection = pyqtSignal(plexdevices.MediaObject)
     new_metadata_selection = pyqtSignal(plexdevices.MediaObject)
@@ -48,14 +30,9 @@ class Browser(QWidget):
         self.image_viewer = None
         self.container_size = 50
 
-        self._worker_thread = QThread()
-        self._worker = ContainerWorker()
-        self._worker.moveToThread(self._worker_thread)
-        self.operate.connect(self._worker.run)
-        self.operate.connect(self.ui.indicator.show)
-        self._worker.done.connect(self._update_list)
-        self._worker.finished.connect(self.ui.indicator.hide)
-        self._worker_thread.start()
+        self.ui.list.model.working.connect(self.ui.indicator.show)
+        self.ui.list.model.done.connect(self.ui.indicator.hide)
+        self.ui.list.model.done.connect(self.update_path)
 
         self.new_metadata_selection.connect(self.update_metadata_panel)
 
@@ -70,7 +47,6 @@ class Browser(QWidget):
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
 
         self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
-        self.ui.list.verticalScrollBar().valueChanged.connect(self._endless_scroll)
         self.ui.list.customContextMenuRequested.connect(self.context_menu)
         self.ui.list.itemSelectionChanged.connect(self.selection_changed)
 
@@ -99,8 +75,6 @@ class Browser(QWidget):
         self.server = server
         self.location = '/library/sections'
         self.history = [(self.location, 0)]
-        self.cur_page = 0
-        self.total_pages = 0
         self.data(key=self.location)
 
     def change_server(self, index):
@@ -131,7 +105,7 @@ class Browser(QWidget):
     def selection_changed(self):
         if self.ui.list.currentItem() is None:
             return
-        m = self.ui.list.currentItem().media
+        m = self.ui.list.currentItem()
         if m.is_photo:
             self.new_image_selection.emit(m)
         if m.is_photo or m.is_video or m.is_audio:
@@ -167,10 +141,10 @@ class Browser(QWidget):
         item = self.ui.list.currentItem()
 
         menu = QMenu(self)
-        if item.media.is_video or item.media.is_audio:
+        if item.is_video or item.is_audio:
             main_action = QAction('Play', menu)
             main_action.triggered.connect(self.action_play)
-        elif item.media.is_photo:
+        elif item.is_photo:
             main_action = QAction('View Photo', menu)
             main_action.triggered.connect(self.action_play_photo)
         else:
@@ -178,17 +152,17 @@ class Browser(QWidget):
             main_action.triggered.connect(self.action_open)
         menu.addAction(main_action)
 
-        if item.media.has_parent:
-            open_action = QAction('goto: ' + item.media.parent_name, menu)
+        if item.has_parent:
+            open_action = QAction('goto: ' + item.parent_name, menu)
             open_action.triggered.connect(self.action_open_parent)
             menu.addAction(open_action)
-        if item.media.has_grandparent:
-            open_action = QAction('goto: ' + item.media.grandparent_name, menu)
+        if item.has_grandparent:
+            open_action = QAction('goto: ' + item.grandparent_name, menu)
             open_action.triggered.connect(self.action_open_grandparent)
             menu.addAction(open_action)
 
-        if item.media.markable:
-            if item.media.watched:
+        if item.markable:
+            if item.watched:
                 mark_action = QAction('Mark unwatched', menu)
                 mark_action.triggered.connect(self.action_mark_unwatched)
             else:
@@ -209,39 +183,29 @@ class Browser(QWidget):
         self.data(item=self.ui.list.currentItem())
 
     def action_open_parent(self):
-        self.data(key=self.ui.list.currentItem().media['parentKey'] + '/children')
+        self.data(key=self.ui.list.currentItem()['parentKey'] + '/children')
 
     def action_open_grandparent(self):
-        self.data(key=self.ui.list.currentItem().media['grandparentKey'] + '/children')
+        self.data(key=self.ui.list.currentItem()['grandparentKey'] + '/children')
 
     def action_mark_watched(self):
         item = self.ui.list.currentItem()
-        if item.media.markable:
-            item.media.mark_watched()
-            item.clear_bg()
+        if item.markable:
+            item.mark_watched()
 
     def action_mark_unwatched(self):
         item = self.ui.list.currentItem()
-        if item.media.markable:
-            item.media.mark_unwatched()
-            item.clear_bg()
+        if item.markable:
+            item.mark_unwatched()
 
     def select_next(self):
-        cur_row = self.ui.list.currentRow()
-        if cur_row >= self.ui.list.count() - 1:
-            return
-        self.ui.list.setCurrentRow(cur_row + 1)
+        self.ui.list.next_item()
 
     def select_prev(self):
-        cur_row = self.ui.list.currentRow()
-        if cur_row < 1:
-            return
-        self.ui.list.setCurrentRow(cur_row - 1)
+        self.ui.list.prev_item()
 
     def closeEvent(self, event):
         self.ui.list.close()
-        self._worker_thread.quit()
-        self._worker_thread.wait()
 
     def channels(self):
         self.data(key='/channels/all')
@@ -272,31 +236,31 @@ class Browser(QWidget):
             self.mpvplayer.close()
         self.create_player()
         self.mpvplayer.player_stopped.connect(self.destroy_player)
-        self.mpvplayer.player_stopped.connect(item.update_offset)
-        self.mpvplayer.play(item.media)
+        # self.mpvplayer.player_stopped.connect(item.update_offset)
+        self.mpvplayer.play(item)
 
     def play_list_item_photo(self, item):
         self.create_photo_viewer()
-        self.image_viewer.load_image(item.media)
+        self.image_viewer.load_image(item)
         self.image_viewer.show()
 
     def search_prompt(self, item):
         text, ok = QInputDialog.getText(self, 'Search', 'query:')
         if ok:
-            self.data(key=item.media['key'], params={'query': text})
+            self.data(key=item['key'], params={'query': text})
 
     def item_double_clicked(self, item):
-        if item.media.is_video or item.media.is_audio:
+        if item.is_video or item.is_audio:
             self.play_list_item(item)
-        elif item.media.is_photo:
+        elif item.is_photo:
             self.play_list_item_photo(item)
-        elif item.media.is_input:
+        elif item.is_input:
             self.search_prompt(item)
         else:
             self.data(item=item)
 
     def data(self, item=None, key=None, history=True, sort=0, params={}):
-        key = key if item is None else item.media['key']
+        key = key if item is None else item['key']
         if not key.startswith('/'):
             key = self.location[0] + '/' + key
         print(key)
@@ -309,40 +273,17 @@ class Browser(QWidget):
             self.ui.sort.setEnabled(False)
             self.ui.btn_sort.setEnabled(False)
 
-        self.ui.list.clear()
-        self.cur_page = 0
         self.location = (key, sort)
         self.params = params
 
-        self._page(key, self.cur_page, self.container_size, sort=sort, params=params)
+        self.ui.list.add_container(self.server, key, 0, self.container_size,
+                                   self.ui.sort.itemData(sort), params)
 
         if history and self.history[-1] != (key, sort):
             if self.history[-1][0] == key:
                 self.history[-1] = (key, self.ui.sort.currentIndex())
             else:
                 self.history.append((key, self.ui.sort.currentIndex()))
-
-        if not self.ui.list.verticalScrollBar().isVisible() and self.cur_page < self.total_pages:
-            self._page(key, self.cur_page, self.container_size, sort=sort, params=params)
-
-    def _endless_scroll(self, value):
-        if value >= self.ui.list.verticalScrollBar().maximum() * 0.9:
-            if self.cur_page < self.total_pages:
-                key, sort = self.location
-                self._page(key, self.cur_page, self.container_size, sort=sort, params=self.params)
-
-    def _page(self, key, page=0, size=20, sort=0, params={}):
-        self.cur_page += 1
-        self.operate.emit(self.server, key, page, size, self.ui.sort.itemData(sort), params)
-
-    def _update_list(self, container):
-        if self.ui.list.count() > 0:
-            self.ui.list.reset()
-        self.ui.list.add_container(container)
-        self.total_pages = math.ceil(container['totalSize'] / self.container_size)
-        self.update_title()
-        self.update_path(container.get('title1', self.location[0].split('/')[-2]),
-                         container.get('title2', self.location[0].split('/')[-1]))
 
     def update_path(self, t1, t2):
         self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
