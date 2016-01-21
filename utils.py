@@ -1,7 +1,17 @@
+from PyQt5.QtWidgets import QMessageBox
+
+
 def timestamp_from_ms(milliseconds):
     m, s = divmod(milliseconds / 1000, 60)
     h, m = divmod(m, 60)
     return "{:.0f}:{:02.0f}:{:02.0f}".format(h, m, s)
+
+
+def msg_box(message, title='plexdesktop'):
+    msg = QMessageBox()
+    msg.setText(message)
+    msg.setWindowTitle(title)
+    msg.exec_()
 
 
 def title(media_object):
