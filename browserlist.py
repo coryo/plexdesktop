@@ -1,83 +1,94 @@
 import hashlib
+import logging
 from PyQt5.QtWidgets import (QListView, QStyledItemDelegate, QApplication,
-                             QStyle, QAbstractItemView, QStyleOptionProgressBar)
+                             QStyle, QAbstractItemView, QStyleOptionProgressBar, QProgressBar, QStyleOptionViewItem)
 from PyQt5.QtGui import (QPixmap, QBrush, QPixmapCache, QColor, QPalette, QFont,
-                         QFontMetrics)
+                         QFontMetrics, QPainter)
 from PyQt5.QtCore import (pyqtSignal, QObject, QSize, Qt, QObject, QThread,
                           QAbstractListModel, QModelIndex, QRect, QPoint, QVariant)
-from sqlcache import SqlCache
+from sqlcache import DB_THUMB
 import plexdevices
 import utils
+logger = logging.getLogger('plexdesktop')
 
 
 class DetailsViewDelegate(QStyledItemDelegate):
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.progress_bar = QProgressBar()
+
     def paint(self, painter, option, index):
+        self.initStyleOption(option, index)
         data = index.data(role=Qt.UserRole)
         padding = 5
         title_font = QFont(option.font.family(), 9, weight=QFont.Bold)
+        title_font_metrics = QFontMetrics(title_font)
         summary_font = QFont(option.font.family(), 7)
+        summary_font_metrics = QFontMetrics(summary_font)
         # Background
-        if option.state & QStyle.State_Selected or option.state & QStyle.State_MouseOver:
-            brush = QApplication.palette().highlight()
-            color = QApplication.palette().highlight().color()
-            color.setAlpha(32)
-            brush.setColor(color)
-            painter.save()
-            painter.fillRect(option.rect, brush)
-            painter.restore()
+        if option.state & QStyle.State_Selected:# or option.state & QStyle.State_MouseOver:
+            painter.fillRect(option.rect, option.palette.highlight())
         # Icon
         thumb = index.data(role=Qt.DecorationRole)
         if thumb is not None and not thumb.isNull():
-            option.widget.style().drawItemPixmap(painter, option.rect,
+            QApplication.style().drawItemPixmap(painter, option.rect,
                                                  Qt.AlignLeft | Qt.AlignVCenter,
                                                  thumb)
         # Title Line
         painter.save()
+        if option.state & QStyle.State_Selected:
+            painter.setBrush(option.palette.highlightedText())
+        else:
+            painter.setBrush(option.palette.text())
         title_text = utils.title(data)
         painter.setFont(title_font)
         title_rect = QRect(option.rect.topLeft() + QPoint(thumb.width() + padding, 0),
                            option.rect.bottomRight())
-        title_rect = option.widget.style().itemTextRect(QFontMetrics(title_font),
+        title_rect = QApplication.style().itemTextRect(title_font_metrics,
                                                         title_rect, Qt.AlignLeft,
                                                         True, title_text)
-        option.widget.style().drawItemText(painter, title_rect,
+        QApplication.style().drawItemText(painter, title_rect,
                                            Qt.AlignLeft | Qt.TextWordWrap,
                                            option.palette, True, title_text)
         painter.restore()
         # Watched
         if data.is_video and not data.watched and not data.in_progress:
             rect = QRect(title_rect.topRight(), title_rect.bottomRight() + QPoint(title_rect.height(), 0))
-            point = title_rect.topRight() + QPoint(QFontMetrics(title_font).height(), title_rect.height() / 2)
+            point = title_rect.topRight() + QPoint(title_font_metrics.height(), title_rect.height() / 2)
             painter.save()
             painter.setBrush(QBrush(QColor(204, 123, 25)))
-            painter.drawEllipse(point, 5, 5)
+            r = (title_font_metrics.height() * 0.75) // 2
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.drawEllipse(point, r, r)
             painter.restore()
-
-        # Summary text
-        if 'summary' in data:
-            painter.save()
-            summary_text = data['summary']
-            painter.setFont(summary_font)
-            summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
-            option.widget.style().drawItemText(painter, summary_rect,
-                                               Qt.AlignLeft | Qt.TextWordWrap,
-                                               option.palette, True, summary_text)
-            painter.restore()
+        # # Summary text
+        # if 'summary' in data:
+        #     painter.save()
+        #     summary_text = data['summary']
+        #     painter.setFont(summary_font)
+        #     summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
+        #     QApplication.style().drawItemText(painter, summary_rect,
+        #                                        Qt.AlignLeft | Qt.TextWordWrap,
+        #                                        option.palette, True, summary_text)
+        #     painter.restore()
         # Progress bar
         if 'viewOffset' in data and 'duration' in data:
             painter.save()
             painter.setFont(summary_font)
             progress = QStyleOptionProgressBar()
             progress.rect = QRect(option.rect.bottomLeft() - QPoint(-thumb.width() - padding,
-                                  QFontMetrics(painter.font()).height()), option.rect.bottomRight())
+                                  summary_font_metrics.height()), option.rect.bottomRight())
+            progress.state |= QStyle.State_Enabled
+            progress.direction = QApplication.layoutDirection()
+            progress.fontMetrics = QApplication.fontMetrics()
+            progress.minimum = 0
             progress.maximum = 100
             progress.progress = 100 * int(data['viewOffset']) / int(data['duration'])
-            progress.textAlignment = Qt.AlignHCenter | Qt.AlignVCenter
             progress.text = (utils.timestamp_from_ms(int(data['viewOffset'])) + " / " +
                              utils.timestamp_from_ms(int(data['duration'])))
             progress.textVisible = True
-            option.widget.style().drawControl(QStyle.CE_ProgressBar, progress, painter)
+            QApplication.style().drawControl(QStyle.CE_ProgressBar, progress, painter, self.progress_bar)
             painter.restore()
 
     def sizeHint(self, option, index):
@@ -110,9 +121,13 @@ class ListModel(QAbstractListModel):
     def _working(self):
         self.working.emit()
 
-    def _done(self):
-        t1, t2 = self.container.get('title1', ''), self.container.get('title2', '')
-        self.done.emit(t1, t2)
+    def _done(self, success):
+        if success:
+            t1, t2 = self.container.get('title1', ''), self.container.get('title2', '')
+            self.done.emit(t1, t2)
+        else:
+            self.done.emit('', '')
+            utils.msg_box('Error fetching data.')
 
     def _close(self):
         self._worker_thread.quit()
@@ -129,12 +144,17 @@ class ListModel(QAbstractListModel):
 
             self.endInsertRows()
 
-        for i, item in enumerate(container.children):
+        for i, item in enumerate(container.children):  # TODO: this seems kind of dumb
             if 'thumb' in item:
                 self.new_item.emit(item, i + start_len)
 
     def _update_thumb(self, img, i):
-        self.setData(self.index(i), img, role=Qt.DecorationRole)
+        try:
+            index = self.index(i)
+        except Exception:
+            logger.warning('BrowserList: unable to set thumb.')
+        else:
+            self.setData(index, img, role=Qt.DecorationRole)
 
     def set_container(self, server, key, page=0, size=50, sort="", params={}):
         self.beginResetModel()
@@ -145,9 +165,11 @@ class ListModel(QAbstractListModel):
         self.sort = sort
         self.params = params
         self.container = None
+        self._thumb_worker.work = False
         self._worker_thread.quit()
         self._worker_thread.wait()
         self._worker_thread.start()
+        self._thumb_worker.work = True
         self.operate.emit(self.server, self.key, self.page, self.container_size,
                           self.sort, self.params)
         self.page += 1
@@ -257,48 +279,54 @@ class ListView(QListView):
 
 class ContainerWorker(QObject):
     done = pyqtSignal(plexdevices.MediaContainer)
-    finished = pyqtSignal()
+    finished = pyqtSignal(bool)
 
     def run(self, server, key, page=0, size=20, sort="", params={}):
+        logger.debug(('BrowserList: fetching container: key={}, server={}, '
+                      'page={}, size={}, sort={}, params={}').format(key, server, page,
+                                                                     size, sort, params))
         p = {} if not sort else {'sort': sort}
         if params:
             p.update(params)
         try:
             data = server.container(key, page=page, size=size, params=p)
-        except (plexdevices.exceptions.DeviceConnectionsError, TypeError) as e:
-            print(str(e))
+        except plexdevices.DeviceConnectionsError as e:
+            logger.error('BrowserList: ' + str(e))
+            self.finished.emit(False)
         else:
+            logger.debug('BrowserList: url=' + server.active.url)
             container = plexdevices.MediaContainer(server, data)
             self.done.emit(container)
-        self.finished.emit()
+            self.finished.emit(True)
 
 
 class ThumbWorker(QObject):
     result_ready = pyqtSignal(QPixmap, int)
 
     def __init__(self, parent=None):
-        super().__init__()
-        self.cache = None
+        super().__init__(parent)
+        self.work = True
 
     def save_cache(self):
-        if self.cache is not None:
-            self.cache.save()
+        DB_THUMB.commit()
 
     def do_work(self, media_object, row):
-        if self.cache is None:
-            self.cache = SqlCache('thumb', access=False)
-            self.cache.open()
+        if not self.work:
+            return
+        self.media_object = media_object
         url = media_object['thumb']
         key = media_object.parent.server.client_identifier + url
         key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
         img = QPixmapCache.find(key_hash)
         if img is None:
-            img_data = self.cache[url]
-            if img_data is None:
-                img_data = media_object.parent.server.image(url, w=300, h=300)
-                self.cache[url] = img_data
+            img_data = DB_THUMB[url]
+            if img_data is None:  # not in cache, fetch from server
+                if media_object.parent.is_library:  # trancode
+                    img_data = media_object.parent.server.image(url, w=300, h=300)
+                else:  # don't transcode
+                    img_data = media_object.parent.server.image(url)
+                DB_THUMB[url] = img_data
             img = QPixmap()
             img.loadFromData(img_data)
             QPixmapCache.insert(key_hash, img)
         self.result_ready.emit(img, row)
-        return

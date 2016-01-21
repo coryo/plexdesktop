@@ -1,69 +1,76 @@
+import logging
 import sqlite3
 import hashlib
-from PyQt5.QtCore import QObject, pyqtSignal
+logger = logging.getLogger('plexdesktop')
 
 
-class SqlCache(QObject):
+class CacheConnection(sqlite3.Connection):
 
-    def __init__(self, name, access=True, parent=None):
-        super(SqlCache, self).__init__(parent)
-        self.name = name
-        self.page_size = 1024 if name == 'thumb' else 8192
-        self.conn = None
-        self.access = access
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.createDB()
 
-    def open(self):
-        self.conn = sqlite3.connect('cache_{}.db'.format(self.name), check_same_thread=False)
-        self.create()
+    def __delitem__(self, key):
+        self.execute('DELETE FROM cache WHERE key = ?', (hashlib.md5(key.encode('utf-8')).hexdigest(),))
+        self.commit()
 
     def __getitem__(self, key):
-        c = self.conn.cursor()
         khash = hashlib.md5(key.encode('utf-8')).hexdigest()
-        c.execute('select value from cache where key = ?', (khash,))
-        r = c.fetchone()
+        data = self.execute('select value from cache where key = ?', (khash,))
+        r = data.fetchone()
+        return r[0] if r is not None else None
+
+    def __setitem__(self, key, value):
+        try:
+            self.execute('INSERT INTO cache (key, value) VALUES (?, ?)',
+                         (hashlib.md5(key.encode('utf-8')).hexdigest(), value))
+        except (sqlite3.IntegrityError, sqlite3.OperationalError) as e:
+            logger.error('SQLCache: sqlite3 error: ' + str(e))
+
+    def createDB(self):
+        self.executescript('CREATE TABLE IF NOT EXISTS cache '
+                           '(key text UNIQUE, value blob, PRIMARY KEY(key)); '
+                           'PRAGMA page_size = 1024;')
+        self.commit()
+
+
+class AccessCacheConnection(sqlite3.Connection):
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.createDB()
+
+    def __delitem__(self, key):
+        self.execute('DELETE FROM cache WHERE key = ?', (hashlib.md5(key.encode('utf-8')).hexdigest(),))
+        self.commit()
+
+    def __getitem__(self, key):
+        khash = hashlib.md5(key.encode('utf-8')).hexdigest()
+        data = self.execute('select value from cache where key = ?', (khash,))
+        r = data.fetchone()
         if r is not None:
-            if self.access:
-                c.execute('UPDATE cache SET accessed = strftime("%s", "now") WHERE key = ?', (khash,))
+            self.execute('UPDATE cache SET accessed = strftime("%s", "now") WHERE key = ?', (khash,))
             return r[0]
         else:
             return None
 
     def __setitem__(self, key, value):
-        c = self.conn.cursor()
         try:
-            if self.access:
-                q = 'INSERT INTO cache (key, value, added) VALUES (?, ?, strftime("%s","now"))'
-            else:
-                q = 'INSERT INTO cache (key, value) VALUES (?, ?)'
-            c.execute(q, (hashlib.md5(key.encode('utf-8')).hexdigest(), value))
-        except (sqlite3.IntegrityError, sqlite3.OperationalError):
-            pass
+            self.execute('INSERT INTO cache (key, value, added) VALUES (?, ?, strftime("%s","now"))',
+                         (hashlib.md5(key.encode('utf-8')).hexdigest(), value))
+        except (sqlite3.IntegrityError, sqlite3.OperationalError) as e:
+            logger.error('SQLCache: sqlite3 error: ' + str(e))
 
-    def __delitem__(self, key):
-        c = self.conn.cursor()
-        c.execute('DELETE FROM cache WHERE key = ?', (hashlib.md5(key.encode('utf-8')).hexdigest(),))
-
-    def __contains__(self, key):
-        c = self.conn.cursor()
-        c.execute('select rowid from cache where key = ?',
-                  (hashlib.md5(key.encode('utf-8')).hexdigest(),))
-        return bool(c.fetchone())
-
-    def save(self):
-        self.conn.commit()
-
-    def create(self):
-        c = self.conn.cursor()
-        c.execute('PRAGMA busy_timeout = 0;')
-        c.execute("PRAGMA page_size = {};".format(self.page_size))
-        if self.access:
-            q = ('CREATE TABLE IF NOT EXISTS cache '
-                 '(key text UNIQUE, value blob, added INT, accessed INT, PRIMARY KEY(key))')
-        else:
-            q = ('CREATE TABLE IF NOT EXISTS cache '
-                 '(key text UNIQUE, value blob, PRIMARY KEY(key))')
-        c.execute(q)
+    def createDB(self):
+        self.executescript('CREATE TABLE IF NOT EXISTS cache '
+                           '(key text UNIQUE, value blob, added INT, accessed INT, PRIMARY KEY(key)); '
+                           'PRAGMA page_size = 8192;')
+        self.commit()
 
     def remove(self, n):
-        c = self.conn.cursor()
-        c.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY accessed ASC LIMIT ?)', (n,))
+        self.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY accessed ASC LIMIT ?)', (n,))
+        self.commit()
+
+
+DB_THUMB = sqlite3.connect('cache_thumb.db', 5, 0, "DEFERRED", False, CacheConnection)
+DB_IMAGE = sqlite3.connect('cache_image.db', 5, 0, "DEFERRED", False, AccessCacheConnection)

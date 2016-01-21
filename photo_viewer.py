@@ -1,9 +1,11 @@
+import logging
 from PyQt5.QtWidgets import QWidget, QLabel, QSizePolicy, QScrollArea
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QPoint, QSize, QBuffer, QIODevice, QTimer
 from PyQt5.QtGui import QPalette, QPixmap, QGuiApplication, QImageReader
 from photo_viewer_ui import Ui_PhotoViewer
 from settings import Settings
-from sqlcache import SqlCache
+from sqlcache import DB_IMAGE
+logger = logging.getLogger('plexdesktop')
 
 
 class ImgWorker(QObject):
@@ -16,16 +18,12 @@ class ImgWorker(QObject):
 
     def run(self):
         url = self.media_object.resolve_url()
-        print(url)
-        cache = SqlCache('image', access=True)
-        cache.open()
-        if url in cache:
-            img_data = cache[url]
-        else:
+        logger.info('PhotoViewer: ' + url)
+        img_data = DB_IMAGE[url]
+        if img_data is None:
             img_data = self.media_object.parent.server.image(url)
-            cache[url] = img_data
-        cache.save()
-
+            DB_IMAGE[url] = img_data
+        DB_IMAGE.commit()
         self.signal.emit(img_data)
         self.finished.emit()
 
