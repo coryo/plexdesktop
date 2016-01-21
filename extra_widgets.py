@@ -28,7 +28,8 @@ class AspectRatioLabel(QLabel):
         return (original_size.height() / original_size.width()) * new_width
 
     def refresh(self):
-        self.set_pixmap_from_data(self.img_data)
+        if self.img_data is not None:
+            self.set_pixmap_from_data(self.img_data)
 
     def setPixmap(self, pixmap):
         self.pix = pixmap
@@ -42,6 +43,8 @@ class AspectRatioLabel(QLabel):
         return QSize(w, self.heightForWidth(w))
 
     def resizeEvent(self, event):
+        if self.pix.isNull():
+            return
         super().setPixmap(self.pix.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
 
@@ -70,7 +73,6 @@ class PreferencesObjectDialog(QDialog):
             self.form.addRow(QLabel(item['label']), input_widget)
             self.ids.append((item['id'], input_widget))
 
-        self.extract_values()
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
