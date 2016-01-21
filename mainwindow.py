@@ -1,10 +1,13 @@
 import pickle
-from PyQt5.QtWidgets import QMainWindow
+import logging
+from PyQt5.QtWidgets import QMainWindow, QMessageBox
 import plexdevices
 import mainwindow_ui
 from browser import Browser
 from remote import Remote
 from settings import Settings
+import utils
+logger = logging.getLogger('plexdesktop')
 
 
 class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
@@ -32,23 +35,34 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             self.session = pickle.loads(settings.value('session'))
             self.update_ui()
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
+            utils.msg_box(str(e))
 
     def create_session(self):
         sender = self.sender()
         settings = Settings()
         settings.setValue('user', self.user.text().strip())
-        self.session = plexdevices.Session(user=self.user.text().strip(),
-                                           password=self.password.text().strip())
         try:
-            self.session.refresh_devices()
+            logger.info('MainWindow: creating session')
+            self.session = plexdevices.Session(user=self.user.text().strip(),
+                                               password=self.password.text().strip())
         except plexdevices.PlexTVError as e:
-            print(str(e))
+            logger.error(str(e))
+            utils.msg_box(str(e))
             return
         try:
+            logger.info('MainWindow: refreshing devices')
+            self.session.refresh_devices()
+        except plexdevices.PlexTVError as e:
+            logger.error(str(e))
+            utils.msg_box(str(e))
+            return
+        try:
+            logger.info('MainWindow: saving session')
             settings.setValue('session', pickle.dumps(self.session))
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
+            utils.msg_box(str(e))
             return
         self.update_ui()
 
@@ -69,18 +83,22 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
         self.btn_browser.setEnabled(True)
 
     def create_remote(self):
+
         try:
             port = self.remotes[-1].port + 1
         except Exception:
             port = self.port
         try:
-            remote = Remote(self.session, self.session.players[self.players.currentIndex()],
-                            port=port)
+            player = self.session.players[self.players.currentIndex()]
+            logger.info('MainWindow: creating remote on port {}. player={}'.format(port, player))
+            remote = Remote(self.session, player, port=port)
         except plexdevices.DeviceConnectionsError as e:
-            print(str(e))
+            logger.error(str(e))
+            utils.msg_box(str(e))
         else:
             self.remotes.append(remote)
 
     def create_browser(self):
+        logger.info('MainWindow: creating browser')
         b = Browser(self.session, self.session.servers[self.servers.currentIndex()])
         self.browsers.append(b)

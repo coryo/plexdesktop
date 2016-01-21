@@ -1,15 +1,29 @@
-from PyQt5.QtWidgets import QWidget, QInputDialog
+import logging
+from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow
 from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
 import player_ui
 from settings import Settings
 import utils
 import mpv
 import plexdevices
+logger = logging.getLogger('plexdesktop')
+mpv_logger = logging.getLogger('plexdesktop.mpv')
+
+
+def mpv_to_py_logging(mpv_log_level):
+    return {
+        'fatal': 'critical',
+        'error': 'error',
+        'warn': 'warning',
+        'info': 'info',
+        'v': 'debug',
+        'debug': 'debug',
+        'trace': 'debug'
+    }[mpv_log_level]
 
 
 class MpvEventLoop(QObject):
     mpvevent = pyqtSignal(dict)
-    shutdown_event = pyqtSignal(dict)
 
     def __init__(self, mpv_instance, parent=None):
         super(MpvEventLoop, self).__init__(parent)
@@ -20,7 +34,6 @@ class MpvEventLoop(QObject):
             devent = event.as_dict()  # copy data from ctypes
             self.mpvevent.emit(devent)
             if devent['event_id'] == mpv.MpvEventID.SHUTDOWN:
-                self.shutdown_event.emit(devent)
                 break
 
 
@@ -39,9 +52,9 @@ class TimelineUpdater(QObject):
             'duration': item['duration'],
             'time': min(time, item['duration'])
         })
-        print('TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(time),
-                                           utils.timestamp_from_ms(item['duration']),
-                                           code))
+        logger.debug('Player: TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(time),
+                                                          utils.timestamp_from_ms(item['duration']),
+                                                          code))
         self.done.emit()
 
 
@@ -63,26 +76,29 @@ class MPVPlayer(QWidget):
             cursor_autohide='no',
             cache_backbuffer=10 * 1024,
             cache_default=10 * 1024,
-            demuxer_max_bytes=50 * 1024 * 1024
+            demuxer_max_bytes=50 * 1024 * 1024,
+            hwdec='auto'
         )
-        self.mpv.observe_property(0, "pause", mpv.MpvFormat.FLAG)
-        self.mpv.observe_property(0, "unpause", mpv.MpvFormat.FLAG)
+        self.mpv.observe_property(0, 'pause', mpv.MpvFormat.FLAG)
+        self.mpv.observe_property(0, 'unpause', mpv.MpvFormat.FLAG)
         self.mpv.observe_property(0, 'playback-time', mpv.MpvFormat.DOUBLE)
         self.mpv.observe_property(0, 'duration', mpv.MpvFormat.DOUBLE)
         self.mpv.observe_property(0, 'volume', mpv.MpvFormat.DOUBLE)
+        self.mpv.request_log_messages('info')
 
         self._event_handlers = {
+            mpv.MpvEventID.SHUTDOWN: self.do_shutdown,
             mpv.MpvEventID.END_FILE: self.do_end_file,
             mpv.MpvEventID.PAUSE: self.do_pause,
-            mpv.MpvEventID.PLAYBACK_RESTART: self.do_playback_restart,
             mpv.MpvEventID.PROPERTY_CHANGE: self.do_property_change,
+            mpv.MpvEventID.LOG_MESSAGE: self.do_log_message,
+            mpv.MpvEventID.FILE_LOADED: self.do_file_loaded
         }
         # MPV event loop
         self._event_thread = QThread()
         self.event_loop = MpvEventLoop(self.mpv)
         self.event_loop.moveToThread(self._event_thread)
         self.event_loop.mpvevent.connect(self._event_handler)
-        self.event_loop.shutdown_event.connect(self.do_shutdown)
         self._event_thread.started.connect(self.event_loop.run)
         self._event_thread.start()
 
@@ -122,8 +138,8 @@ class MPVPlayer(QWidget):
 
     @property
     def headers(self):
-        return {'X-Plex-Client-Identifier': "test1",
-                'X-Plex-Device-Name': "test1"}
+        return {'X-Plex-Client-Identifier': 'test1',
+                'X-Plex-Device-Name': 'test1'}
 
     ############################################################################
     def _event_handler(self, devent):
@@ -132,8 +148,30 @@ class MPVPlayer(QWidget):
         if eventid in self._event_handlers:
             self._event_handlers[eventid](event)
 
-    def do_shutdown(self):
-        print('do_shutdown')
+    def do_file_loaded(self, event):
+        self.playback_started.emit()
+        self.show()
+        try:
+            video_params = self.mpv.video_params
+            if not self.resized:
+                self.resized = True
+                self.resize(QSize(video_params['w'], video_params['h'] + self.ui.control_bar.height()))
+        except Exception:
+            pass
+        if 'viewOffset' in self.current_item:
+            if self.current_item['viewOffset'] > 0:
+                self.mpv.seek(self.current_item['viewOffset'] // 1000, 'absolute')
+
+    def do_log_message(self, event):
+        try:
+            level = mpv_to_py_logging(event['level'].decode())
+            msg = '{}: {}'.format(event['prefix'].decode(), event['text'].decode().rstrip('\n'))
+            getattr(mpv_logger, level)(msg)
+        except Exception:
+            mpv_logger.warning('mpv log error: {}'.format(event))
+
+    def do_shutdown(self, event):
+        logger.info('Player: exiting mpv player')
         self.mpv.detach_destroy()
         self.mpv = None
         self.settings.setValue('last_volume', int(self.last_volume))
@@ -154,23 +192,10 @@ class MPVPlayer(QWidget):
         self.do_timeline_update(state='playing')
 
     def do_timeline_update(self, state):
+        self.media_object['viewOffset'] = self.ui.slider_progress.value()
         self.update_timeline.emit(self.play_queue, self.current_item,
                                   self.ui.slider_progress.value(),
                                   self.headers, state)
-
-    def do_playback_restart(self, event):
-        self.show()
-        try:
-            video_params = self.mpv.video_params
-            if not self.resized:
-                self.resized = True
-                self.resize(QSize(video_params['w'], video_params['h'] + self.ui.control_bar.height()))
-        except Exception:
-            pass
-        if self.current_item['viewOffset'] > 0:
-            self.mpv.seek(self.current_item['viewOffset'] // 1000, 'absolute')
-            self.current_item['viewOffset'] = 0
-        self.playback_started.emit()
 
     def do_property_change(self, event):
         if event['data'] is None:
@@ -205,6 +230,7 @@ class MPVPlayer(QWidget):
     def play(self, media_object):
         self.setWindowTitle(media_object['title'])
 
+        self.media_object = media_object
         self.play_queue = media_object.parent.server.play_queue(self.headers, media_object)
         self.current_item = (self.play_queue.selected_item
                              if self.play_queue.selected_item is not None
@@ -213,8 +239,6 @@ class MPVPlayer(QWidget):
         if 'duration' in self.current_item:
             self.update_total_time(int(self.current_item['duration']))
             self.ui.slider_progress.setMaximum(int(self.current_item['duration']))
-        if 'viewOffset' not in self.current_item:
-            self.current_item['viewOffset'] = 0
 
         self.available_streams = self.current_item.get_all_keys()
         if len(self.available_streams) == 1:
@@ -232,6 +256,7 @@ class MPVPlayer(QWidget):
                 self.close()
                 return
 
+        logger.info('Player: playing url: ' + url)
         self.mpv.play(url)
 
     def pause(self):

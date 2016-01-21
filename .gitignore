@@ -52,6 +52,7 @@ coverage.xml
 
 # Django stuff:
 *.log
+*.log.*
 
 # Sphinx documentation
 docs/_build/
@@ -95,6 +96,7 @@ Temporary Items
 Thumbs.db
 ehthumbs.db
 *.db
+*.db-journal
 
 # Folder config file
 Desktop.ini

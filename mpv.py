@@ -1,9 +1,6 @@
 
 from ctypes import *
-import threading
 import os
-import asyncio
-from warnings import warn
 
 # vim: ts=4 sw=4
 
@@ -291,7 +288,7 @@ class MPV:
             except Exception as e:
                 print(str(e))
         _mpv_initialize(self.handle)
-    
+
     def wait_for_playback(self):
         """ Waits until playback of the current title is paused or done """
         with self._playback_cond:
@@ -304,6 +301,9 @@ class MPV:
 
     def detach_destroy(self):
         _mpv_detach_destroy(self.handle)
+
+    def request_log_messages(self, level):
+        _mpv_request_log_messages(self.handle, level.encode())
 
     def observe_property(self, reply_userdata, name, mpv_format):
         _mpv_observe_property(self.handle, reply_userdata, name.encode(), mpv_format)
@@ -330,10 +330,10 @@ class MPV:
 
     def _set_property(self, name, value):
         self.command('set_property', name, str(value))
-    
+
     def _add_property(self, name, value=None):
         self.command('add_property', name, value)
-    
+
     def _cycle_property(self, name, direction='up'):
         self.command('cycle_property', name, direction)
 
@@ -366,7 +366,7 @@ class MPV:
 
     def playlist_move(self, index1, index2):
         self.command('playlist_move', index1, index2)
-    
+
     def run(self, command, *args):
         self.command('run', command, *args)
 
@@ -384,10 +384,10 @@ class MPV:
 
     def sub_reload(self, sub_id=None):
         self.command('sub_reload', sub_id)
-    
+
     def sub_step(self, skip):
         self.command('sub_step', skip)
-    
+
     def sub_seek(self, skip):
         self.command('sub_seek', skip)
 
@@ -402,13 +402,13 @@ class MPV:
 
     def discnav(self, command):
         self.command('discnav', command)
-    
+
     def write_watch_later_config(self):
         self.command('write_watch_later_config')
-    
+
     def overlay_add(self, overlay_id, x, y, file_or_fd, offset, fmt, w, h, stride):
         self.command('overlay_add', overlay_id, x, y, file_or_fd, offset, fmt, w, h, stride)
-    
+
     def overlay_remove(self, overlay_id):
         self.command('overlay_remove', overlay_id)
 
@@ -417,7 +417,7 @@ class MPV:
 
     def script_message_to(self, target, *args):
         self.command('script_message_to', target, *args)
-    
+
     @property
     def metadata(self):
         raise NotImplementedError
@@ -427,7 +427,7 @@ class MPV:
 
     def vf_metadata(self):
         raise NotImplementedError
-    
+
     # Convenience functions
     def play(self, filename):
         self.loadfile(filename)
@@ -482,12 +482,12 @@ class MPV:
     def _get_list(self, prefix, props):
         count = int(_ensure_encoding(_mpv_get_property_string(self.handle, (prefix+'count').encode())))
         return [ self._get_dict(prefix+str(index)+'/', props) for index in range(count)]
-            
+
     # TODO: af, vf properties
     # TODO: edition-list
     # TODO property-mapped options
 
-    
+
 def bindproperty(MPV, name, proptype, access):
     def getter(self):
         return proptype(_ensure_encoding(_mpv_get_property_string(self.handle, name.encode())))

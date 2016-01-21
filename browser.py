@@ -1,5 +1,7 @@
 import math
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QListView, QDialog, QDialogButtonBox, QLabel, QFormLayout, QCheckBox, QComboBox, QLineEdit
+import logging
+import os
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -9,6 +11,8 @@ from photo_viewer import PhotoViewer
 import plexdevices
 import utils
 from extra_widgets import PreferencesObjectDialog
+from sqlcache import DB_IMAGE
+logger = logging.getLogger('plexdesktop')
 
 
 class Browser(QWidget):
@@ -73,6 +77,7 @@ class Browser(QWidget):
         self.show()
 
     def initialize(self, server):
+        logger.info('Browser: initializing browser on server={}'.format(server))
         self.server = server
         self.location = '/library/sections'
         self.history = [(self.location, 0)]
@@ -156,6 +161,11 @@ class Browser(QWidget):
             main_action.triggered.connect(self.action_open)
         menu.addAction(main_action)
 
+        if item.is_photo:
+            save_action = QAction('Save', menu)
+            save_action.triggered.connect(self.action_save_photo)
+            menu.addAction(save_action)
+
         if item.has_parent:
             open_action = QAction('goto: ' + item.parent_name, menu)
             open_action.triggered.connect(self.action_open_parent)
@@ -205,6 +215,31 @@ class Browser(QWidget):
         if item.markable:
             item.mark_unwatched()
 
+    def action_save_photo(self):
+        item = self.ui.list.currentItem()
+        url = item.resolve_url()
+        ext = url.split('?')[0].split('/')[-1].split('.')[-1]
+        fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item['title']]), ext)
+        logger.debug(('Browser: save_photo: item={}, url={}, ext={}, '
+                      'fname={}').format(item, url, ext, fname))
+        save_file, filtr = QFileDialog.getSaveFileName(self, 'Open Directory',
+                                                       fname,
+                                                       'Images (*.{})'.format(ext))
+        if not save_file:
+            return
+        try:
+            data = DB_IMAGE[url]
+            if data is None:
+                logger.debug('Browser: save_photo: downloading image')
+                data = item.parent.server.image(url)
+            else:
+                logger.debug('Browser: save_photo: image was in the cache')
+        except Exception:
+            return
+        with open(os.path.abspath(save_file), 'wb') as f:
+            logger.info('Browser: save_photo: writing to: {}'.format(save_file))
+            f.write(data)
+
     def select_next(self):
         self.ui.list.next_item()
 
@@ -232,7 +267,6 @@ class Browser(QWidget):
         self.data(key=key, sort=self.ui.sort.currentIndex())
 
     def back(self):
-        print(self.history)
         if len(self.history) > 1:
             self.history.pop()
             key, sort = self.history[-1]
@@ -252,7 +286,6 @@ class Browser(QWidget):
         self.image_viewer.show()
 
     def preferences_prompt(self, item):
-        print('settings')
         dialog = PreferencesObjectDialog(item, parent=self)
 
     def search_prompt(self, item):
@@ -276,7 +309,7 @@ class Browser(QWidget):
         key = key if item is None else item['key']
         if not key.startswith('/'):
             key = self.location[0] + '/' + key
-        print(key)
+        logger.info('Browser: key=' + key)
 
         self.ui.sort.setCurrentIndex(sort)
         if key.startswith('/library'):
