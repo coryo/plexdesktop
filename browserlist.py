@@ -93,7 +93,7 @@ class DetailsViewDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
         data = index.data(role=Qt.UserRole)
-        return QSize(400, index.model().parent().iconSize().height() + 2 * 2)
+        return QSize(300, index.model().parent().iconSize().height() + 2 * 2)
 
 
 class ListModel(QAbstractListModel):
@@ -104,19 +104,26 @@ class ListModel(QAbstractListModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.container = None
+        self.busy = False
         self._worker_thread = QThread()
+        self._worker_thread.start()
         self._worker = ContainerWorker()
         self._thumb_worker = ThumbWorker()
 
         self._thumb_worker.moveToThread(self._worker_thread)
         self._thumb_worker.result_ready.connect(self._update_thumb)
-        self._worker_thread.started.connect(self._thumb_worker.save_cache)
-        self.new_item.connect(self._thumb_worker.do_work, type=Qt.QueuedConnection)
+        self.new_item.connect(self._thumb_worker.do_work)
         self._worker.moveToThread(self._worker_thread)
         self.operate.connect(self._worker.run, type=Qt.QueuedConnection)
         self._worker.done.connect(self._add_container)
         self.operate.connect(self._working)
         self._worker.finished.connect(self._done)
+
+    def _stop_thread(self):
+        logger.debug('BrowserList: ListModel: stop thread')
+        self._worker_thread.quit()
+        self._worker_thread.wait()
 
     def _working(self):
         self.working.emit()
@@ -128,10 +135,6 @@ class ListModel(QAbstractListModel):
         else:
             self.done.emit('', '')
             utils.msg_box('Error fetching data.')
-
-    def _close(self):
-        self._worker_thread.quit()
-        self._worker_thread.wait()
 
     def _add_container(self, container):
         if self.container is None:
@@ -147,17 +150,25 @@ class ListModel(QAbstractListModel):
         for i, item in enumerate(container.children):  # TODO: this seems kind of dumb
             if 'thumb' in item:
                 self.new_item.emit(item, i + start_len)
+        self.busy = False
 
     def _update_thumb(self, img, i):
         try:
             index = self.index(i)
         except Exception:
-            logger.warning('BrowserList: unable to set thumb.')
+            logger.warning('BrowserList: ListModel: unable to set thumb.')
         else:
             self.setData(index, img, role=Qt.DecorationRole)
 
-    def set_container(self, server, key, page=0, size=50, sort="", params={}):
+    def set_container2(self, container):
         self.beginResetModel()
+        self._add_container(container)
+
+    def set_container(self, server, key, page=0, size=50, sort="", params={}):
+        if self.busy:
+            return
+        self.beginResetModel()
+        self.busy = True
         self.server = server
         self.key = key
         self.page = page
@@ -166,9 +177,7 @@ class ListModel(QAbstractListModel):
         self.params = params
         self.container = None
         self._thumb_worker.work = False
-        self._worker_thread.quit()
-        self._worker_thread.wait()
-        self._worker_thread.start()
+        DB_THUMB.commit()
         self._thumb_worker.work = True
         self.operate.emit(self.server, self.key, self.page, self.container_size,
                           self.sort, self.params)
@@ -207,9 +216,6 @@ class ListModel(QAbstractListModel):
         items_to_fetch = min(self.container_size, remaining)
         self.beginInsertRows(QModelIndex(), len(self.container.children),
                              len(self.container.children) + items_to_fetch - 1)
-        self._worker_thread.quit()
-        self._worker_thread.wait()
-        self._worker_thread.start()
         self.operate.emit(self.server, self.key, self.page, self.container_size,
                           self.sort, self.params)
         self.page += 1
@@ -220,19 +226,24 @@ class ListView(QListView):
     viewModeChanged = pyqtSignal()
     itemDoubleClicked = pyqtSignal(plexdevices.MediaObject)
     itemSelectionChanged = pyqtSignal(plexdevices.MediaObject)
+    container_request = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
+    closed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.delegate = DetailsViewDelegate()
+        self.delegate_default = QStyledItemDelegate()
         self.setItemDelegate(self.delegate)
         self.doubleClicked.connect(self.double_click)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setResizeMode(QListView.Adjust)
-        self.icon_size(48)
+        self.icon_size(32)
         self.setAlternatingRowColors(True)
 
         self.model = ListModel(parent=self)
         self.setModel(self.model)
+        self.container_request.connect(self.model.set_container, type=Qt.QueuedConnection)
+        self.closed.connect(self.model._stop_thread)
 
     def toggle_view_mode(self):
         if self.viewMode() == QListView.ListMode:
@@ -250,7 +261,10 @@ class ListView(QListView):
         self.setIconSize(self.last_icon_size)
 
     def add_container(self, server, key, page=0, size=50, sort="", params={}):
-        self.model.set_container(server, key, page, size, sort, params)
+        self.container_request.emit(server, key, page, size, sort, params)
+
+    def add_container2(self, container):
+        self.model.set_container2(container)
 
     def double_click(self, index):
         self.itemDoubleClicked.emit(index.data(role=Qt.UserRole))
@@ -273,7 +287,7 @@ class ListView(QListView):
         self.setCurrentIndex(index)
 
     def closeEvent(self, event):
-        self.model._close()
+        self.closed.emit()
         super().closeEvent(event)
 
 
@@ -307,9 +321,6 @@ class ThumbWorker(QObject):
         super().__init__(parent)
         self.work = True
 
-    def save_cache(self):
-        DB_THUMB.commit()
-
     def do_work(self, media_object, row):
         if not self.work:
             return
@@ -330,3 +341,4 @@ class ThumbWorker(QObject):
             img.loadFromData(img_data)
             QPixmapCache.insert(key_hash, img)
         self.result_ready.emit(img, row)
+        self.media_object = None

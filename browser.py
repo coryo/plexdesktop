@@ -2,7 +2,7 @@ import math
 import logging
 import os
 from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog
-from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread, QPoint
+from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication
 from PyQt5.QtGui import QCursor
 import browser_ui
 from settings import Settings
@@ -46,8 +46,8 @@ class Browser(QWidget):
         self.ui.btn_recently_added.clicked.connect(self.recently_added)
         self.ui.btn_home.clicked.connect(self.home)
         self.ui.btn_channels.clicked.connect(self.channels)
-        self.ui.btn_sort.pressed.connect(self.reload)
         self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
+        self.ui.btn_test.pressed.connect(self.reload_stylesheet)
 
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
 
@@ -68,6 +68,7 @@ class Browser(QWidget):
         self.ui.sort.addItem('Resolution (high)', 'mediaHeight:desc')
         self.ui.sort.addItem('Duration (long)', 'duration:desc')
         self.ui.sort.addItem('Duration (short)', 'duration:asc')
+        self.ui.sort.currentIndexChanged.connect(self.reload)
 
         self.ui.servers.currentIndexChanged.connect(self.change_server)
 
@@ -75,6 +76,11 @@ class Browser(QWidget):
         self.ui.metadata_panel.hide()
         self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
         self.show()
+
+    def reload_stylesheet(self):
+        app = QCoreApplication.instance()
+        with open('plexdesktop.qss', 'r') as f:
+            app.setStyleSheet(f.read())
 
     def initialize(self, server):
         logger.info('Browser: initializing browser on server={}'.format(server))
@@ -88,6 +94,7 @@ class Browser(QWidget):
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
+        self.mpvplayer.show()
         self.ui.indicator.show()
         self.mpvplayer.playback_started.connect(self.ui.indicator.hide)
         self.mpvplayer.player_stopped.connect(self.ui.indicator.hide)
@@ -114,7 +121,7 @@ class Browser(QWidget):
         m = self.ui.list.currentItem()
         if m.is_photo:
             self.new_image_selection.emit(m)
-        if m.is_photo or m.is_video or m.is_audio:
+        if m.is_photo or m.is_video or m.is_audio or m.is_directory:
             self.new_metadata_selection.emit(m)
         else:
             self.update_metadata_panel(None)
@@ -160,6 +167,11 @@ class Browser(QWidget):
             main_action = QAction('Open', menu)
             main_action.triggered.connect(self.action_open)
         menu.addAction(main_action)
+
+        if item.is_album:
+            action = QAction('Play all', menu)
+            action.triggered.connect(self.action_play)
+            menu.addAction(action)
 
         if item.is_photo:
             save_action = QAction('Save', menu)
@@ -311,13 +323,10 @@ class Browser(QWidget):
             key = self.location[0] + '/' + key
         logger.info('Browser: key=' + key)
 
+        self.ui.sort.currentIndexChanged.disconnect()
         self.ui.sort.setCurrentIndex(sort)
-        if key.startswith('/library'):
-            self.ui.sort.setEnabled(True)
-            self.ui.btn_sort.setEnabled(True)
-        else:
-            self.ui.sort.setEnabled(False)
-            self.ui.btn_sort.setEnabled(False)
+        self.ui.sort.currentIndexChanged.connect(self.reload)
+        self.ui.sort.setEnabled(key.startswith('/library'))
 
         self.location = (key, sort)
         self.params = params
