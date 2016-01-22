@@ -36,7 +36,6 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             self.update_ui()
         except Exception as e:
             logger.error(str(e))
-            utils.msg_box(str(e))
 
     def create_session(self):
         sender = self.sender()
