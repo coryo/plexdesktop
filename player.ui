@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>301</width>
-    <height>33</height>
+    <width>403</width>
+    <height>225</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -67,9 +67,41 @@
        <number>0</number>
       </property>
       <item>
+       <widget class="QPushButton" name="btn_prev">
+        <property name="maximumSize">
+         <size>
+          <width>30</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="focusPolicy">
+         <enum>Qt::NoFocus</enum>
+        </property>
+        <property name="text">
+         <string>&lt;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="btn_play">
         <property name="text">
          <string>pp</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_next">
+        <property name="maximumSize">
+         <size>
+          <width>30</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="focusPolicy">
+         <enum>Qt::NoFocus</enum>
+        </property>
+        <property name="text">
+         <string>&gt;</string>
         </property>
        </widget>
       </item>
@@ -126,11 +158,44 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QPushButton" name="btn_playlist">
+        <property name="maximumSize">
+         <size>
+          <width>30</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="focusPolicy">
+         <enum>Qt::NoFocus</enum>
+        </property>
+        <property name="text">
+         <string>v</string>
+        </property>
+       </widget>
+      </item>
      </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ListView" name="playlist">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
     </widget>
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ListView</class>
+   <extends>QListWidget</extends>
+   <header>browserlist.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

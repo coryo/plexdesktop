@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow
 from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
 import player_ui
 from settings import Settings
+from browserlist import ListView
 import utils
 import mpv
 import plexdevices
@@ -67,15 +68,23 @@ class MPVPlayer(QWidget):
         super().__init__(parent)
         self.ui = player_ui.Ui_Player()
         self.ui.setupUi(self)
+        self.ui.player_widget.setAttribute(Qt.WA_DontCreateNativeAncestors)
+        self.ui.player_widget.setAttribute(Qt.WA_NativeWindow)
+
+        self.ui.playlist.hide()
+        self.ui.playlist.setItemDelegate(self.ui.playlist.delegate_default)
+        self.ui.playlist.itemDoubleClicked.connect(self.playlist_item_double_clicked)
+        self.ui.btn_playlist.pressed.connect(self.toggle_playlist)
+
+        self.setMinimumSize(self.minimumSizeHint())
 
         # MPV setup
         wid = int(self.ui.player_widget.winId())
         self.mpv = mpv.MPV(
             wid=wid,
             input_cursor='no',
-            cursor_autohide='no',
             cache_backbuffer=10 * 1024,
-            cache_default=10 * 1024,
+            cache_default=25 * 1024,
             demuxer_max_bytes=50 * 1024 * 1024,
             hwdec='auto'
         )
@@ -125,6 +134,7 @@ class MPVPlayer(QWidget):
         self.play_queue = None
         self.current_item = None
         self.resized = False
+        self.current_time = 0
 
         self.mpv.add_volume(-100)
         self.mpv.add_volume(self.last_volume)
@@ -134,12 +144,57 @@ class MPVPlayer(QWidget):
         self.ui.slider_volume.valueChanged.connect(self.volume)
         self.ui.btn_play.clicked.connect(self.pause)
 
-        self.hide()
+        self.ui.btn_prev.pressed.connect(self.playlist_prev)
+        self.ui.btn_next.pressed.connect(self.playlist_next)
 
     @property
     def headers(self):
         return {'X-Plex-Client-Identifier': 'test1',
                 'X-Plex-Device-Name': 'test1'}
+
+    def minimumSizeHint(self):
+        return QSize(320, 240)
+
+    def toggle_playlist(self):
+        self.ui.playlist.setVisible(not self.ui.playlist.isVisible())
+
+    def playlist_prev(self):
+        try:
+            index = self.play_queue.children.index(self.current_item)
+            if not index:
+                return
+            self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) - 1]
+            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
+            url = self.current_item.resolve_url()
+            logger.info('Player: prev url: ' + url)
+            self.mpv.play(url)
+        except Exception as e:
+            logger.warning('Player: ' + str(e))
+
+    def playlist_next(self):
+        try:
+            self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) + 1]
+            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
+            url = self.current_item.resolve_url()
+            logger.info('Player: next url: ' + url)
+            self.mpv.play(url)
+        except Exception as e:
+            logger.warning('Player: ' + str(e))
+
+    def playlist_item_double_clicked(self, item):
+        logger.info('Player: playlist dbl click: {}'.format(item))
+        self.do_timeline_update(state='paused')
+        self.do_timeline_update(state='stopped')
+        self.next_item = item
+        try:
+            self.current_item = item
+            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
+            url = self.current_item.resolve_url()
+            logger.info('Player: next url: ' + url)
+            self.mpv.play(url)
+        except Exception as e:
+            logger.warning('Player: ' + str(e))
+            self.close()
 
     ############################################################################
     def _event_handler(self, devent):
@@ -150,7 +205,6 @@ class MPVPlayer(QWidget):
 
     def do_file_loaded(self, event):
         self.playback_started.emit()
-        self.show()
         try:
             video_params = self.mpv.video_params
             if not self.resized:
@@ -177,11 +231,20 @@ class MPVPlayer(QWidget):
         self.settings.setValue('last_volume', int(self.last_volume))
         self._event_thread.quit()
         self._event_thread.wait()
-        self.player_stopped.emit(self.ui.slider_progress.value())
+        self.player_stopped.emit(self.current_time)#self.ui.slider_progress.value())
 
     def do_end_file(self, event):
         self.do_timeline_update(state='paused')
         self.do_timeline_update(state='stopped')
+        # try:
+        #     self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) + 1]
+        #     self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
+        #     url = self.current_item.resolve_url()
+        #     logger.info('Player: next url: ' + url)
+        #     self.mpv.play(url)
+        # except Exception as e:
+        #     logger.warning('Player: ' + str(e))
+        #     self.close()
 
     def do_pause(self, event):
         self.paused = True
@@ -192,9 +255,9 @@ class MPVPlayer(QWidget):
         self.do_timeline_update(state='playing')
 
     def do_timeline_update(self, state):
-        self.media_object['viewOffset'] = self.ui.slider_progress.value()
+        self.media_object['viewOffset'] = self.current_time#self.ui.slider_progress.value()
         self.update_timeline.emit(self.play_queue, self.current_item,
-                                  self.ui.slider_progress.value(),
+                                  self.current_time,#self.ui.slider_progress.value(),
                                   self.headers, state)
 
     def do_property_change(self, event):
@@ -209,17 +272,20 @@ class MPVPlayer(QWidget):
             self.last_volume = event['data']
         elif event['name'] == 'playback-time':
             self._playback_time_count += 1
+            ms = event['data'] * 1000
+            self.current_time = ms
             if self._playback_time_count == 500:
                 self.do_timeline_update('playing')
                 self._playback_time_count = 0
             if not self.ui.slider_progress.isSliderDown():
-                ms = event['data'] * 1000
-                self.update_current_time(ms)
-                self.ui.slider_progress.setSliderPosition(ms)
+                self.update_current_time(self.current_time)
+                self.ui.slider_progress.setSliderPosition(self.current_time)
+
     ############################################################################
 
     def hide_cursor(self):
-        self.setCursor(Qt.BlankCursor)
+        if self.isFullScreen():
+            self.setCursor(Qt.BlankCursor)
 
     def update_current_time(self, value):
         self.ui.lbl_current_time.setText(utils.timestamp_from_ms(milliseconds=value))
@@ -232,9 +298,13 @@ class MPVPlayer(QWidget):
 
         self.media_object = media_object
         self.play_queue = media_object.parent.server.play_queue(self.headers, media_object)
+        logger.info(self.play_queue.data)
         self.current_item = (self.play_queue.selected_item
                              if self.play_queue.selected_item is not None
                              else media_object)
+        logger.info(self.current_item.data)
+
+        self.ui.playlist.add_container2(self.play_queue)
 
         if 'duration' in self.current_item:
             self.update_total_time(int(self.current_item['duration']))
@@ -263,8 +333,11 @@ class MPVPlayer(QWidget):
         self.mpv.command('cycle', 'pause')
 
     def seek(self):
-        self.mpv.seek(self.ui.slider_progress.value() / 1000, 'absolute')
-        self.do_timeline_update('playing')
+        try:
+            self.mpv.seek(self.ui.slider_progress.value() / 1000, 'absolute')
+            self.do_timeline_update('playing')
+        except Exception as e:
+            logger.warning('Player: ' + str(e))
 
     def volume(self):
         delta = self.ui.slider_volume.value() - self.last_volume
