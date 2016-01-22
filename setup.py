@@ -17,7 +17,8 @@ options = {
     'build_exe': {
         "include_files": [
             (requests.certs.where(), 'cacert.pem'),
-            ('mpv', 'mpv')
+            ('mpv', 'mpv'),
+            ('plexdesktop.qss', 'plexdesktop.qss')
         ],
         'optimize': 2
     }
