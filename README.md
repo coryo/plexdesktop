@@ -1,7 +1,7 @@
 # plexdesktop
 a basic plex client using pyqt5, libmpv, [python-mpv](https://github.com/jaseg/python-mpv).
 
-![img](http://i.imgur.com/NDLPWuD.png)
+![img](http://i.imgur.com/tRlcLpX.png)
 
 ### Windows:
 Dependencies:
