@@ -63,6 +63,7 @@ class MPVPlayer(QWidget):
     player_stopped = pyqtSignal(int)
     playback_started = pyqtSignal()
     update_timeline = pyqtSignal(plexdevices.PlayQueue, plexdevices.MediaObject, int, dict, str)
+    mouse_moved = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -125,6 +126,7 @@ class MPVPlayer(QWidget):
         self.cursor_timer.setSingleShot(True)
         self.cursor_timer.setInterval(1000)
         self.cursor_timer.timeout.connect(self.hide_cursor)
+        self.mouse_moved.connect(self.cursor_timer.start)
 
         self.settings = Settings()
         self.last_volume = int(self.settings.value('last_volume', 0))
@@ -133,6 +135,7 @@ class MPVPlayer(QWidget):
         self.paused = False
         self.play_queue = None
         self.current_item = None
+        self.next_item = None
         self.resized = False
         self.current_time = 0
 
@@ -155,46 +158,28 @@ class MPVPlayer(QWidget):
     def minimumSizeHint(self):
         return QSize(320, 240)
 
+    ############################################################################
     def toggle_playlist(self):
         self.ui.playlist.setVisible(not self.ui.playlist.isVisible())
 
     def playlist_prev(self):
-        try:
-            index = self.play_queue.children.index(self.current_item)
-            if not index:
-                return
-            self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) - 1]
-            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
-            url = self.current_item.resolve_url()
-            logger.info('Player: prev url: ' + url)
-            self.mpv.play(url)
-        except Exception as e:
-            logger.warning('Player: ' + str(e))
+        self.playlist_play_item(self.play_queue.get_prev())
 
     def playlist_next(self):
-        try:
-            self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) + 1]
-            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
-            url = self.current_item.resolve_url()
-            logger.info('Player: next url: ' + url)
-            self.mpv.play(url)
-        except Exception as e:
-            logger.warning('Player: ' + str(e))
+        self.playlist_play_item(self.play_queue.get_next())
 
     def playlist_item_double_clicked(self, item):
-        logger.info('Player: playlist dbl click: {}'.format(item))
-        self.do_timeline_update(state='paused')
-        self.do_timeline_update(state='stopped')
-        self.next_item = item
-        try:
-            self.current_item = item
-            self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
-            url = self.current_item.resolve_url()
-            logger.info('Player: next url: ' + url)
-            self.mpv.play(url)
-        except Exception as e:
-            logger.warning('Player: ' + str(e))
-            self.close()
+        self.playlist_play_item(self.play_queue.select(item))
+
+    def playlist_play_item(self, item):
+        if item is not None:
+            self.next_item = item
+            self.mpv.stop()
+
+    def playlist_queue_item(self, item):
+        if self.play_queue is not None:
+            self.play_queue.add_item(item, self.headers)
+            self.ui.playlist.add_container2(self.play_queue)
 
     ############################################################################
     def _event_handler(self, devent):
@@ -204,7 +189,6 @@ class MPVPlayer(QWidget):
             self._event_handlers[eventid](event)
 
     def do_file_loaded(self, event):
-        self.playback_started.emit()
         try:
             video_params = self.mpv.video_params
             if not self.resized:
@@ -213,8 +197,25 @@ class MPVPlayer(QWidget):
         except Exception:
             pass
         if 'viewOffset' in self.current_item:
+            self.current_time = self.current_item['viewOffset']
             if self.current_item['viewOffset'] > 0:
                 self.mpv.seek(self.current_item['viewOffset'] // 1000, 'absolute')
+        else:
+            self.current_time = 0
+        self.do_timeline_update(state='playing')
+        self.playback_started.emit()
+
+    def do_end_file(self, event):
+        logger.debug('Player: do_end_file')
+        self.do_timeline_update(state='stopped')
+        item = (self.play_queue.get_next() if self.next_item is None else
+                self.play_queue.select(self.next_item))
+        if item is not None:
+            self.current_item = item
+            self.next_item = None
+            url = item.resolve_url()
+            logger.info('Player: next url: ' + url)
+            self.mpv.play(url)
 
     def do_log_message(self, event):
         try:
@@ -232,19 +233,6 @@ class MPVPlayer(QWidget):
         self._event_thread.quit()
         self._event_thread.wait()
         self.player_stopped.emit(self.current_time)#self.ui.slider_progress.value())
-
-    def do_end_file(self, event):
-        self.do_timeline_update(state='paused')
-        self.do_timeline_update(state='stopped')
-        # try:
-        #     self.current_item = self.play_queue.children[self.play_queue.children.index(self.current_item) + 1]
-        #     self.play_queue['playQueueSelectedItemID'] = self.current_item['playQueueItemID']
-        #     url = self.current_item.resolve_url()
-        #     logger.info('Player: next url: ' + url)
-        #     self.mpv.play(url)
-        # except Exception as e:
-        #     logger.warning('Player: ' + str(e))
-        #     self.close()
 
     def do_pause(self, event):
         self.paused = True
@@ -297,12 +285,11 @@ class MPVPlayer(QWidget):
         self.setWindowTitle(media_object['title'])
 
         self.media_object = media_object
-        self.play_queue = media_object.parent.server.play_queue(self.headers, media_object)
-        logger.info(self.play_queue.data)
+        self.play_queue = plexdevices.PlayQueue.create(media_object.parent.server, media_object, self.headers)
+        logger.info('Player: playQueueID={}'.format(self.play_queue['playQueueID']))
         self.current_item = (self.play_queue.selected_item
                              if self.play_queue.selected_item is not None
                              else media_object)
-        logger.info(self.current_item.data)
 
         self.ui.playlist.add_container2(self.play_queue)
 
@@ -370,7 +357,8 @@ class MPVPlayer(QWidget):
 
     def mouseMoveEvent(self, event):
         self.unsetCursor()
-        self.cursor_timer.start()
+        if self.isFullScreen():
+            self.mouse_moved.emit()
         if event.buttons() & Qt.LeftButton:
             if not self.isFullScreen() and self.drag_position is not None:  # window dragging
                 self.move(event.globalPos() - self.drag_position)

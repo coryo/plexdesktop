@@ -33,8 +33,8 @@ class DetailsViewDelegate(QStyledItemDelegate):
         thumb = index.data(role=Qt.DecorationRole)
         if thumb is not None and not thumb.isNull():
             QApplication.style().drawItemPixmap(painter, option.rect,
-                                                 Qt.AlignLeft | Qt.AlignVCenter,
-                                                 thumb)
+                                                Qt.AlignLeft | Qt.AlignVCenter,
+                                                thumb)
         # Title Line
         painter.save()
         if option.state & QStyle.State_Selected:
@@ -162,6 +162,7 @@ class ListModel(QAbstractListModel):
 
     def set_container2(self, container):
         self.beginResetModel()
+        self.container = None
         self._add_container(container)
 
     def set_container(self, server, key, page=0, size=50, sort="", params={}):

@@ -1,7 +1,7 @@
 import math
 import logging
 import os
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog, QApplication
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -84,6 +84,8 @@ class Browser(QWidget):
 
     def initialize(self, server):
         logger.info('Browser: initializing browser on server={}'.format(server))
+        settings = Settings()
+        settings.setValue('last_server', server.client_identifier)
         self.server = server
         self.location = '/library/sections'
         self.history = [(self.location, 0)]
@@ -154,38 +156,59 @@ class Browser(QWidget):
         item = self.ui.list.currentItem()
 
         menu = QMenu(self)
+        actions = []
         if item.is_video or item.is_audio:
             main_action = QAction('Play', menu)
             main_action.triggered.connect(self.action_play)
+            copy_action = QAction('Copy url', menu)
+            copy_action.triggered.connect(self.action_copy)
+            actions.append(main_action)
+            actions.append(copy_action)
+            if self.mpvplayer is not None:
+                append_action = QAction('Add to Queue', menu)
+                append_action.triggered.connect(self.action_queue)
+                actions.append(append_action)
         elif item.is_photo:
             main_action = QAction('View Photo', menu)
             main_action.triggered.connect(self.action_play_photo)
+            copy_action = QAction('Copy url', menu)
+            copy_action.triggered.connect(self.action_copy)
+            actions.append(main_action)
+            actions.append(copy_action)
         elif item.is_settings:
             main_action = QAction('Open', menu)
             main_action.triggered.connect(self.action_settings)
+            actions.append(main_action)
         else:
             main_action = QAction('Open', menu)
             main_action.triggered.connect(self.action_open)
-        menu.addAction(main_action)
+            actions.append(main_action)
 
         if item.is_album:
             action = QAction('Play all', menu)
             action.triggered.connect(self.action_play)
-            menu.addAction(action)
+            actions.append(action)
+            if self.mpvplayer is not None:
+                append_action = QAction('Add to Queue', menu)
+                append_action.triggered.connect(self.action_queue)
+                actions.append(append_action)
 
         if item.is_photo:
             save_action = QAction('Save', menu)
             save_action.triggered.connect(self.action_save_photo)
-            menu.addAction(save_action)
+            # menu.addAction(save_action)
+            actions.append(save_action)
 
         if item.has_parent:
             open_action = QAction('goto: ' + item.parent_name, menu)
             open_action.triggered.connect(self.action_open_parent)
-            menu.addAction(open_action)
+            # menu.addAction(open_action)
+            actions.append(open_action)
         if item.has_grandparent:
             open_action = QAction('goto: ' + item.grandparent_name, menu)
             open_action.triggered.connect(self.action_open_grandparent)
             menu.addAction(open_action)
+            actions.append(open_action)
 
         if item.markable:
             if item.watched:
@@ -194,10 +217,24 @@ class Browser(QWidget):
             else:
                 mark_action = QAction('Mark watched', menu)
                 mark_action.triggered.connect(self.action_mark_watched)
-            menu.addAction(mark_action)
+            # menu.addAction(mark_action)
+            actions.append(mark_action)
+
+        for action in actions:
+            menu.addAction(action)
 
         if not menu.isEmpty():
             menu.exec_(QCursor.pos())
+
+    def action_queue(self):
+        item = self.ui.list.currentItem()
+        self.mpvplayer.playlist_queue_item(item)
+
+    def action_copy(self):
+        item = self.ui.list.currentItem()
+        url = item.resolve_url()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(url)
 
     def action_settings(self):
         self.preferences_prompt(self.ui.list.currentItem())
