@@ -75,6 +75,12 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             self.servers.addItem('{} - {}'.format(item.name, item.product), i)
             self.btn_browser.setEnabled(True)
 
+        settings = Settings()
+        last_server = [x for x in self.session.servers if x.client_identifier == settings.value('last_server')]
+        if last_server:
+            index = self.session.servers.index(last_server[0])
+            self.servers.setCurrentIndex(index)
+
     def enable_remote(self):
         self.btn_remote.setEnabled(True)
 
