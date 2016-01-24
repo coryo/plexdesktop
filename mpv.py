@@ -432,6 +432,9 @@ class MPV:
     def play(self, filename):
         self.loadfile(filename)
 
+    def stop(self):
+        self.command('stop')
+
     # Complex properties
 
     _VIDEO_PARAMS_LIST = (
