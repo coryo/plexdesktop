@@ -1,7 +1,7 @@
 import math
 import logging
 import os
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog, QApplication
+from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog, QApplication, QLineEdit
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication
 from PyQt5.QtGui import QCursor
 import browser_ui
@@ -27,9 +27,16 @@ class Browser(QWidget):
         self.ui.indicator.hide()
 
         self.session = session
-        for i, item in enumerate(self.session.servers):
-            self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+        self.refresh_servers()
+        self.refresh_users()
         self.ui.servers.setCurrentIndex(self.session.servers.index(server))
+        self.ui.servers.currentIndexChanged.connect(self.change_server)
+        try:
+            self.ui.users.setCurrentIndex(self.ui.users.findText(self.session.user))
+        except Exception as e:
+            logger.debug(str(e))
+        self.current_user = self.ui.users.currentText()
+        self.ui.users.currentIndexChanged.connect(self.change_user)
 
         self.mpvplayer = None
         self.image_viewer = None
@@ -48,6 +55,7 @@ class Browser(QWidget):
         self.ui.btn_channels.clicked.connect(self.channels)
         self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
         self.ui.btn_test.pressed.connect(self.reload_stylesheet)
+        self.ui.btn_reload.pressed.connect(self.reload)
 
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
 
@@ -70,8 +78,6 @@ class Browser(QWidget):
         self.ui.sort.addItem('Duration (short)', 'duration:asc')
         self.ui.sort.currentIndexChanged.connect(self.reload)
 
-        self.ui.servers.currentIndexChanged.connect(self.change_server)
-
         self.initialize(server)
         self.ui.metadata_panel.hide()
         self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
@@ -91,8 +97,59 @@ class Browser(QWidget):
         self.history = [(self.location, 0)]
         self.data(key=self.location)
 
+    def refresh_servers(self):
+        self.ui.servers.clear()
+        for i, item in enumerate(self.session.servers):
+            self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+
+    def refresh_users(self):
+        self.ui.users.clear()
+        for i, item in enumerate(self.session.users):
+            self.ui.users.addItem(item['title'], i)
+            logger.debug('{} {}'.format(item['title'], item['id']))
+
     def change_server(self, index):
-        self.initialize(self.session.servers[index])
+        try:
+            server = self.session.servers[index]
+        except Exception as e:
+            logger.error('Browser: unable to switch server. ' + str(e))
+        else:
+            self.initialize(server)
+
+    def change_user(self, index):
+        last_user, new_user = self.current_user, self.ui.users.currentText()
+        logger.info('Browser: switching user. {} -> {}'.format(last_user, new_user))
+
+        def reset_user_selector():
+            self.ui.users.currentIndexChanged.disconnect()
+            self.ui.users.setCurrentIndex(self.ui.users.findText(last_user))
+            self.ui.users.currentIndexChanged.connect(self.change_user)
+        try:
+            user = self.session.users[index]
+            user_id, user_auth = user['id'], bool(int(user['protected']))
+        except Exception as e:
+            logger.error('Browser: unable to switch user. ' + str(e))
+            reset_user_selector()
+        else:
+            pin = None
+            if user_auth:
+                text, ok = QInputDialog.getText(self, 'Switch User', 'PIN:',
+                                                QLineEdit.Password)
+                if ok:
+                    pin = text
+                else:
+                    reset_user_selector()
+                    return
+            logger.debug('Browser: userid={}'.format(user_id))
+            try:
+                self.session.switch_user(user_id, pin=pin)
+            except plexdevices.PlexTVError as e:
+                logger.error('Browser: ' + str(e))
+                utils.msg_box(str(e))
+                reset_user_selector()
+            else:
+                self.current_user = new_user
+                self.refresh_servers()
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
@@ -164,7 +221,7 @@ class Browser(QWidget):
             copy_action.triggered.connect(self.action_copy)
             actions.append(main_action)
             actions.append(copy_action)
-            if self.mpvplayer is not None:
+            if self.mpvplayer is not None and item.parent.is_library:
                 append_action = QAction('Add to Queue', menu)
                 append_action.triggered.connect(self.action_queue)
                 actions.append(append_action)
@@ -188,7 +245,7 @@ class Browser(QWidget):
             action = QAction('Play all', menu)
             action.triggered.connect(self.action_play)
             actions.append(action)
-            if self.mpvplayer is not None:
+            if self.mpvplayer is not None and item.parent.is_library:
                 append_action = QAction('Add to Queue', menu)
                 append_action.triggered.connect(self.action_queue)
                 actions.append(append_action)
@@ -196,13 +253,11 @@ class Browser(QWidget):
         if item.is_photo:
             save_action = QAction('Save', menu)
             save_action.triggered.connect(self.action_save_photo)
-            # menu.addAction(save_action)
             actions.append(save_action)
 
         if item.has_parent:
             open_action = QAction('goto: ' + item.parent_name, menu)
             open_action.triggered.connect(self.action_open_parent)
-            # menu.addAction(open_action)
             actions.append(open_action)
         if item.has_grandparent:
             open_action = QAction('goto: ' + item.grandparent_name, menu)
@@ -217,7 +272,6 @@ class Browser(QWidget):
             else:
                 mark_action = QAction('Mark watched', menu)
                 mark_action.triggered.connect(self.action_mark_watched)
-            # menu.addAction(mark_action)
             actions.append(mark_action)
 
         for action in actions:
@@ -326,7 +380,6 @@ class Browser(QWidget):
             self.mpvplayer.close()
         self.create_player()
         self.mpvplayer.player_stopped.connect(self.destroy_player)
-        # self.mpvplayer.player_stopped.connect(item.update_offset)
         self.mpvplayer.play(item)
 
     def play_list_item_photo(self, item):

@@ -57,12 +57,18 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             utils.msg_box(str(e))
             return
         try:
+            logger.info('MainWindow: getting plex home users.')
+            self.session.refresh_users()
+        except Exception as e:
+            logger.error(str(e))
+        try:
             logger.info('MainWindow: saving session')
             settings.setValue('session', pickle.dumps(self.session))
         except Exception as e:
             logger.error(str(e))
             utils.msg_box(str(e))
             return
+
         self.update_ui()
 
     def update_ui(self):

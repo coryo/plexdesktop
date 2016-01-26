@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Browser(object):
     def setupUi(self, Browser):
         Browser.setObjectName("Browser")
-        Browser.resize(345, 345)
+        Browser.resize(425, 345)
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(Browser)
         self.verticalLayout_2.setContentsMargins(4, 4, 4, 4)
         self.verticalLayout_2.setSpacing(2)
@@ -31,6 +31,10 @@ class Ui_Browser(object):
         self.btn_back.setFont(font)
         self.btn_back.setObjectName("btn_back")
         self.horizontalLayout.addWidget(self.btn_back)
+        self.btn_reload = QtWidgets.QPushButton(Browser)
+        self.btn_reload.setMaximumSize(QtCore.QSize(30, 16777215))
+        self.btn_reload.setObjectName("btn_reload")
+        self.horizontalLayout.addWidget(self.btn_reload)
         self.btn_home = QtWidgets.QPushButton(Browser)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
@@ -138,6 +142,9 @@ class Ui_Browser(object):
         self.servers.setFont(font)
         self.servers.setObjectName("servers")
         self.horizontalLayout_4.addWidget(self.servers)
+        self.users = QtWidgets.QComboBox(Browser)
+        self.users.setObjectName("users")
+        self.horizontalLayout_4.addWidget(self.users)
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem1)
         self.btn_metadata = QtWidgets.QPushButton(Browser)
@@ -178,6 +185,7 @@ class Ui_Browser(object):
         _translate = QtCore.QCoreApplication.translate
         Browser.setWindowTitle(_translate("Browser", "Browser"))
         self.btn_back.setText(_translate("Browser", "<"))
+        self.btn_reload.setText(_translate("Browser", "R"))
         self.btn_home.setText(_translate("Browser", "home"))
         self.btn_on_deck.setText(_translate("Browser", "on deck"))
         self.btn_recently_added.setText(_translate("Browser", "recently added"))

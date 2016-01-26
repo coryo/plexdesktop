@@ -54,7 +54,7 @@ class PreferencesObjectDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Preferences')
         self.form = QFormLayout(self)
-        settings = media_object.parent.server.container(media_object['key'])
+        settings = media_object.follow_key()
         self.ids = []
         for item in settings['_children']:
             itype = item['type']
