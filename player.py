@@ -50,11 +50,11 @@ class TimelineUpdater(QObject):
             'identifier': play_queue['identifier'],
             'playQueueItemID': item['playQueueItemID'],
             'ratingKey': item['ratingKey'],
-            'duration': item['duration'],
-            'time': min(time, item['duration'])
+            'duration': item.get('duration', 0),
+            'time': min(time, item.get('duration', 0))
         })
         logger.debug('Player: TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(time),
-                                                          utils.timestamp_from_ms(item['duration']),
+                                                          utils.timestamp_from_ms(item.get('duration', 0)),
                                                           code))
         self.done.emit()
 
