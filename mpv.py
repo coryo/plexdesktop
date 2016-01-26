@@ -1,13 +1,16 @@
 
 from ctypes import *
-import os
+import platform
 
 # vim: ts=4 sw=4
 
-if os.name == 'nt':
+
+if platform.system() == 'Windows':
     backend = CDLL('mpv/win32/mpv-1')
-else:
+elif platform.system() == 'Linux':
     backend = CDLL('libmpv.so.1')
+elif platform.system() == 'Darwin':
+    backend = CDLL('libmpv.dylib')
 
 
 class MpvHandle(c_void_p):
