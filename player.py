@@ -304,10 +304,10 @@ class MPVPlayer(QWidget):
             url = self.current_item.resolve_key(key)
         else:
             # there are multiple items, prompt for a selection
-            items = (x[0] for x in self.available_streams)
+            items = (str(x[0]) for x in self.available_streams)
             choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()', 'Stream:', items, 0, False)
             if ok:
-                key = [x[1] for x in self.available_streams if x[0] == choice]
+                key = [x[1] for x in self.available_streams if str(x[0]) == choice]
                 url = self.current_item.resolve_key(key[0])
             else:
                 self.close()

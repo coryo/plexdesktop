@@ -21,33 +21,37 @@ class Browser(QWidget):
     operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
 
     def __init__(self, session, server, parent=None):
-        super(self.__class__, self).__init__(parent)
+        super().__init__(parent)
         self.ui = browser_ui.Ui_Browser()
         self.ui.setupUi(self)
         self.ui.indicator.hide()
+        self.ui.metadata_panel.hide()
 
         self.session = session
-        self.refresh_servers()
-        self.refresh_users()
-        self.ui.servers.setCurrentIndex(self.session.servers.index(server))
-        self.ui.servers.currentIndexChanged.connect(self.change_server)
-        try:
-            self.ui.users.setCurrentIndex(self.ui.users.findText(self.session.user))
-        except Exception as e:
-            logger.debug(str(e))
-        self.current_user = self.ui.users.currentText()
-        self.ui.users.currentIndexChanged.connect(self.change_user)
-
         self.mpvplayer = None
         self.image_viewer = None
         self.container_size = 50
 
+        # Servers combo box
+        self.update_servers()
+        self.ui.servers.setCurrentIndex(self.session.servers.index(server))
+        self.ui.servers.currentIndexChanged.connect(self.change_server)
+        # Users combo box
+        self.update_users()
+        try:
+            self.ui.users.setCurrentIndex(self.ui.users.findText(self.session.user))
+        except Exception as e:
+            logger.debug(str(e))
+        self.ui.users.currentIndexChanged.connect(self.change_user)
+        self.current_user = self.ui.users.currentText()
+        # List signals
+        self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
+        self.ui.list.customContextMenuRequested.connect(self.context_menu)
+        self.ui.list.itemSelectionChanged.connect(self.selection_changed)
         self.ui.list.model.working.connect(self.ui.indicator.show)
         self.ui.list.model.done.connect(self.ui.indicator.hide)
         self.ui.list.model.done.connect(self.update_path)
-
-        self.new_metadata_selection.connect(self.update_metadata_panel)
-
+        # Buttons
         self.ui.btn_back.clicked.connect(self.back)
         self.ui.btn_on_deck.clicked.connect(self.on_deck)
         self.ui.btn_recently_added.clicked.connect(self.recently_added)
@@ -56,13 +60,10 @@ class Browser(QWidget):
         self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
         self.ui.btn_test.pressed.connect(self.reload_stylesheet)
         self.ui.btn_reload.pressed.connect(self.reload)
-
+        self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
+        # Zoom slider
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
-
-        self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
-        self.ui.list.customContextMenuRequested.connect(self.context_menu)
-        self.ui.list.itemSelectionChanged.connect(self.selection_changed)
-
+        # Sort combobox
         self.ui.sort.addItem('Default sort', None)
         self.ui.sort.addItem('Added (new)', 'addedAt:desc')
         self.ui.sort.addItem('Added (old)', 'addedAt:asc')
@@ -78,35 +79,38 @@ class Browser(QWidget):
         self.ui.sort.addItem('Duration (short)', 'duration:asc')
         self.ui.sort.currentIndexChanged.connect(self.reload)
 
+        self.new_metadata_selection.connect(self.update_metadata_panel)
+
         self.initialize(server)
-        self.ui.metadata_panel.hide()
-        self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
         self.show()
 
-    def reload_stylesheet(self):
-        app = QCoreApplication.instance()
-        with open('plexdesktop.qss', 'r') as f:
-            app.setStyleSheet(f.read())
-
     def initialize(self, server):
+        """ bring the browser to its default state on the given server """
         logger.info('Browser: initializing browser on server={}'.format(server))
         settings = Settings()
         settings.setValue('last_server', server.client_identifier)
         self.server = server
         self.location = '/library/sections'
-        self.history = [(self.location, 0)]
+        self.history = [(self.location, 0, {})]
         self.data(key=self.location)
 
-    def refresh_servers(self):
-        self.ui.servers.clear()
-        for i, item in enumerate(self.session.servers):
-            self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+    def data(self, media_object=None, key=None, history=True, sort=0, params={}):
+        key = key if media_object is None else media_object['key']
+        if not key.startswith('/'):
+            key = self.location[0] + '/' + key
+        logger.info('Browser: key=' + key)
 
-    def refresh_users(self):
-        self.ui.users.clear()
-        for i, item in enumerate(self.session.users):
-            self.ui.users.addItem(item['title'], i)
-            logger.debug('{} {}'.format(item['title'], item['id']))
+        self.update_sort_no_signal(sort)
+        self.ui.sort.setEnabled(key.startswith('/library'))
+
+        self.location = (key, sort, params)
+        self.ui.list.add_container(self.server, key, 0, self.container_size,
+                                   self.ui.sort.itemData(sort), params)
+
+        if history and self.history[-1] != self.location:
+            if self.history[-1][0] == key:
+                self.history.pop()
+            self.history.append(self.location)
 
     def change_server(self, index):
         try:
@@ -118,18 +122,14 @@ class Browser(QWidget):
 
     def change_user(self, index):
         last_user, new_user = self.current_user, self.ui.users.currentText()
+        last_index = self.ui.users.findText(last_user)
         logger.info('Browser: switching user. {} -> {}'.format(last_user, new_user))
-
-        def reset_user_selector():
-            self.ui.users.currentIndexChanged.disconnect()
-            self.ui.users.setCurrentIndex(self.ui.users.findText(last_user))
-            self.ui.users.currentIndexChanged.connect(self.change_user)
         try:
             user = self.session.users[index]
             user_id, user_auth = user['id'], bool(int(user['protected']))
         except Exception as e:
             logger.error('Browser: unable to switch user. ' + str(e))
-            reset_user_selector()
+            self.update_users_no_signal(last_index)
         else:
             pin = None
             if user_auth:
@@ -138,7 +138,7 @@ class Browser(QWidget):
                 if ok:
                     pin = text
                 else:
-                    reset_user_selector()
+                    self.update_users_no_signal(last_index)
                     return
             logger.debug('Browser: userid={}'.format(user_id))
             try:
@@ -146,10 +146,10 @@ class Browser(QWidget):
             except plexdevices.PlexTVError as e:
                 logger.error('Browser: ' + str(e))
                 utils.msg_box(str(e))
-                reset_user_selector()
+                self.update_users_no_signal(last_index)
             else:
                 self.current_user = new_user
-                self.refresh_servers()
+                self.update_servers()
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
@@ -174,6 +174,44 @@ class Browser(QWidget):
         self.image_viewer.close()
         self.image_viewer = None
 
+    def select_next(self):
+        self.ui.list.next_item()
+
+    def select_prev(self):
+        self.ui.list.prev_item()
+
+    def play_list_item(self, item):
+        if self.mpvplayer is not None:
+            self.mpvplayer.close()
+        self.create_player()
+        self.mpvplayer.player_stopped.connect(self.destroy_player)
+        self.mpvplayer.play(item)
+
+    def play_list_item_photo(self, item):
+        self.create_photo_viewer()
+        self.image_viewer.load_image(item)
+        self.image_viewer.show()
+
+    def preferences_prompt(self, item):
+        dialog = PreferencesObjectDialog(item, parent=self)
+
+    def search_prompt(self, item):
+        text, ok = QInputDialog.getText(self, 'Search', 'query:')
+        if ok:
+            self.data(media_object=item, params={'query': text})
+
+    def item_double_clicked(self, item):
+        if item.is_video or item.is_audio:
+            self.play_list_item(item)
+        elif item.is_photo:
+            self.play_list_item_photo(item)
+        elif item.is_input:
+            self.search_prompt(item)
+        elif item.is_settings:
+            self.preferences_prompt(item)
+        else:
+            self.data(media_object=item)
+
     def selection_changed(self):
         if self.ui.list.currentItem() is None:
             return
@@ -184,6 +222,61 @@ class Browser(QWidget):
             self.new_metadata_selection.emit(m)
         else:
             self.update_metadata_panel(None)
+
+    # Button slots #############################################################
+    def back(self):
+        if len(self.history) > 1:
+            self.history.pop()
+            key, sort, params = self.history[-1]
+            self.data(key=key, sort=sort, params=params, history=False)
+
+    def reload(self):
+        key, sort, params = self.location
+        self.data(key=key, sort=self.ui.sort.currentIndex(), params=params)
+
+    def home(self):
+        self.history = [('/library/sections', 0, {})]
+        self.data(key='/library/sections')
+
+    def on_deck(self):
+        self.data(key='/library/onDeck')
+
+    def recently_added(self):
+        self.data(key='/library/recentlyAdded')
+
+    def channels(self):
+        self.data(key='/channels/all')
+
+    def toggle_metadata_panel(self):
+        if self.ui.metadata_panel.isVisible():
+            self.ui.metadata_panel.hide()
+            self.ui.btn_metadata.setText("v")
+        else:
+            self.ui.metadata_panel.show()
+            self.ui.btn_metadata.setText("^")
+
+    # UI Updates ###############################################################
+    def reload_stylesheet(self):
+        app = QCoreApplication.instance()
+        with open('plexdesktop.qss', 'r') as f:
+            app.setStyleSheet(f.read())
+
+    def update_servers(self):
+        self.ui.servers.clear()
+        for i, item in enumerate(self.session.servers):
+            self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+
+    def update_users(self):
+        self.ui.users.clear()
+        for i, item in enumerate(self.session.users):
+            self.ui.users.addItem(item['title'], i)
+            logger.debug('{} {}'.format(item['title'], item['id']))
+
+    def update_path(self, t1, t2):
+        self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
+
+    def update_title(self):
+        self.setWindowTitle('{}: {}'.format(self.server.name, self.location[0]))
 
     def update_metadata_panel(self, media_object):
         if media_object is None:
@@ -201,14 +294,31 @@ class Browser(QWidget):
         txt = ["{}: {}".format(k, v) for k, v in data.items()]
         self.ui.lbl_metadata.setText('\n'.join(txt))
 
-    def toggle_metadata_panel(self):
-        if self.ui.metadata_panel.isVisible():
-            self.ui.metadata_panel.hide()
-            self.ui.btn_metadata.setText("v")
-        else:
-            self.ui.metadata_panel.show()
-            self.ui.btn_metadata.setText("^")
+    def update_sort_no_signal(self, index):
+        self.ui.sort.currentIndexChanged.disconnect()
+        self.ui.sort.setCurrentIndex(index)
+        self.ui.sort.currentIndexChanged.connect(self.reload)
 
+    def update_users_no_signal(self, index):
+        self.ui.users.currentIndexChanged.disconnect()
+        self.ui.users.setCurrentIndex(index)
+        self.ui.users.currentIndexChanged.connect(self.change_user)
+
+    def update_servers_no_signal(self, index):
+        self.ui.servers.currentIndexChanged.disconnect()
+        self.ui.servers.setCurrentIndex(index)
+        self.ui.servers.currentIndexChanged.connect(self.change_server)
+
+    # QT Events ################################################################
+    def closeEvent(self, event):
+        self.ui.list.close()
+
+    def mousePressEvent(self, event):
+        if event.buttons() & Qt.BackButton:
+            self.back()
+            event.accept()
+
+    # Context Menu #############################################################
     def context_menu(self, pos):
         item = self.ui.list.currentItem()
 
@@ -300,7 +410,7 @@ class Browser(QWidget):
         self.play_list_item_photo(self.ui.list.currentItem())
 
     def action_open(self):
-        self.data(item=self.ui.list.currentItem())
+        self.data(media_object=self.ui.list.currentItem())
 
     def action_open_parent(self):
         self.data(key=self.ui.list.currentItem()['parentKey'] + '/children')
@@ -342,101 +452,3 @@ class Browser(QWidget):
         with open(os.path.abspath(save_file), 'wb') as f:
             logger.info('Browser: save_photo: writing to: {}'.format(save_file))
             f.write(data)
-
-    def select_next(self):
-        self.ui.list.next_item()
-
-    def select_prev(self):
-        self.ui.list.prev_item()
-
-    def closeEvent(self, event):
-        self.ui.list.close()
-
-    def channels(self):
-        self.data(key='/channels/all')
-
-    def home(self):
-        self.history = [('/library/sections', 0)]
-        self.data(key='/library/sections')
-
-    def on_deck(self):
-        self.data(key='/library/onDeck')
-
-    def recently_added(self):
-        self.data(key='/library/recentlyAdded')
-
-    def reload(self):
-        key, sort = self.location
-        self.data(key=key, sort=self.ui.sort.currentIndex())
-
-    def back(self):
-        if len(self.history) > 1:
-            self.history.pop()
-            key, sort = self.history[-1]
-            self.data(key=key, sort=sort, history=False)
-
-    def play_list_item(self, item):
-        if self.mpvplayer is not None:
-            self.mpvplayer.close()
-        self.create_player()
-        self.mpvplayer.player_stopped.connect(self.destroy_player)
-        self.mpvplayer.play(item)
-
-    def play_list_item_photo(self, item):
-        self.create_photo_viewer()
-        self.image_viewer.load_image(item)
-        self.image_viewer.show()
-
-    def preferences_prompt(self, item):
-        dialog = PreferencesObjectDialog(item, parent=self)
-
-    def search_prompt(self, item):
-        text, ok = QInputDialog.getText(self, 'Search', 'query:')
-        if ok:
-            self.data(key=item['key'], params={'query': text})
-
-    def item_double_clicked(self, item):
-        if item.is_video or item.is_audio:
-            self.play_list_item(item)
-        elif item.is_photo:
-            self.play_list_item_photo(item)
-        elif item.is_input:
-            self.search_prompt(item)
-        elif item.is_settings:
-            self.preferences_prompt(item)
-        else:
-            self.data(item=item)
-
-    def data(self, item=None, key=None, history=True, sort=0, params={}):
-        key = key if item is None else item['key']
-        if not key.startswith('/'):
-            key = self.location[0] + '/' + key
-        logger.info('Browser: key=' + key)
-
-        self.ui.sort.currentIndexChanged.disconnect()
-        self.ui.sort.setCurrentIndex(sort)
-        self.ui.sort.currentIndexChanged.connect(self.reload)
-        self.ui.sort.setEnabled(key.startswith('/library'))
-
-        self.location = (key, sort)
-        self.params = params
-
-        self.ui.list.add_container(self.server, key, 0, self.container_size,
-                                   self.ui.sort.itemData(sort), params)
-
-        if history and self.history[-1] != (key, sort):
-            if self.history[-1][0] == key:
-                self.history[-1] = (key, self.ui.sort.currentIndex())
-            else:
-                self.history.append((key, self.ui.sort.currentIndex()))
-
-    def update_path(self, t1, t2):
-        self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
-
-    def update_title(self):
-        self.setWindowTitle('{}: {}'.format(self.server.name, self.location[0]))
-
-    def mousePressEvent(self, event):
-        if event.buttons() & Qt.BackButton:
-            self.back()
-            event.accept()
