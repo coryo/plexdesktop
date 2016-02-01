@@ -7,6 +7,7 @@ a basic plex client using pyqt5, libmpv, [python-mpv](https://github.com/jaseg/p
 Dependencies:
  * python 3.4
  * pyqt5
+ * [plexdevices](https://github.com/coryo/plexdevices)
 
 ##### Run
 ```
@@ -23,6 +24,11 @@ python setup.py build
 ```
 sudo apt-get install python3-pyqt5
 sudo apt-get install libmpv1
+
+git clone https://github.com/coryo/plexdevices.git
+cd plexdevices
+pip3 install .
+
 python3 main.py
 ```
 
@@ -36,6 +42,10 @@ echo 'import site; site.addsitedir("/usr/local/lib/python3.5/site-packages")' >>
 
 brew tap mpv-player/mpv
 brew install mpv --with-shared
+
+git clone https://github.com/coryo/plexdevices.git
+cd plexdevices
+pip3 install .
 
 python3 main.py
 ```
