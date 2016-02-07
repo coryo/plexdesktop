@@ -27,7 +27,7 @@ class DetailsViewDelegate(QStyledItemDelegate):
         summary_font = QFont(option.font.family(), 7)
         summary_font_metrics = QFontMetrics(summary_font)
         # Background
-        if option.state & QStyle.State_Selected:# or option.state & QStyle.State_MouseOver:
+        if option.state & QStyle.State_Selected:  # or option.state & QStyle.State_MouseOver:
             painter.fillRect(option.rect, option.palette.highlight())
         # Icon
         thumb = index.data(role=Qt.DecorationRole)
@@ -46,14 +46,14 @@ class DetailsViewDelegate(QStyledItemDelegate):
         title_rect = QRect(option.rect.topLeft() + QPoint(thumb.width() + padding, 0),
                            option.rect.bottomRight())
         title_rect = QApplication.style().itemTextRect(title_font_metrics,
-                                                        title_rect, Qt.AlignLeft,
-                                                        True, title_text)
+                                                       title_rect, Qt.AlignLeft,
+                                                       True, title_text)
         QApplication.style().drawItemText(painter, title_rect,
-                                           Qt.AlignLeft | Qt.TextWordWrap,
-                                           option.palette, True, title_text)
+                                          Qt.AlignLeft | Qt.TextWordWrap,
+                                          option.palette, True, title_text)
         painter.restore()
         # Watched
-        if data.is_video and not data.watched and not data.in_progress:
+        if isinstance(data, plexdevices.MediaObject) and not data.watched and not data.in_progress:
             rect = QRect(title_rect.topRight(), title_rect.bottomRight() + QPoint(title_rect.height(), 0))
             point = title_rect.topRight() + QPoint(title_font_metrics.height(), title_rect.height() / 2)
             painter.save()
@@ -98,7 +98,7 @@ class DetailsViewDelegate(QStyledItemDelegate):
 
 class ListModel(QAbstractListModel):
     operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
-    new_item = pyqtSignal(plexdevices.MediaObject, int)
+    new_item = pyqtSignal(plexdevices.BaseObject, int)
     working = pyqtSignal()
     done = pyqtSignal(str, str)
 
@@ -225,8 +225,8 @@ class ListModel(QAbstractListModel):
 class ListView(QListView):
     resize_signal = pyqtSignal()
     viewModeChanged = pyqtSignal()
-    itemDoubleClicked = pyqtSignal(plexdevices.MediaObject)
-    itemSelectionChanged = pyqtSignal(plexdevices.MediaObject)
+    itemDoubleClicked = pyqtSignal(plexdevices.BaseObject)
+    itemSelectionChanged = pyqtSignal(plexdevices.BaseObject)
     container_request = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
     closed = pyqtSignal()
 

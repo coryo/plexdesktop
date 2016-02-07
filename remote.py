@@ -1,9 +1,11 @@
+import logging
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QSettings, QThread
 from PyQt5.QtGui import QPixmap
 import plexdevices
 import remote_ui
 from settings import Settings
+logger = logging.getLogger('plexdesktop')
 
 
 class PlexRemote(QObject, plexdevices.Remote):
@@ -23,7 +25,7 @@ class Remote(QWidget, remote_ui.Ui_Remote):
         super(self.__class__, self).__init__(parent)
         self.setupUi(self)
 
-        print('Creating remote `{}` on port {} for player {}'.format(name, port, str(player)))
+        logger.info('Remote: Creating remote `{}` on port {} for player {}'.format(name, port, str(player)))
         self.remote = PlexRemote(parent=self, player=player, name=name, port=port)
         self.remote.timeline_subscribe()
         self.session = session
@@ -72,16 +74,16 @@ class Remote(QWidget, remote_ui.Ui_Remote):
                     server = [s for s in self.session.servers if s.client_identifier == mid][0]
                     self.updateData(server, key)
                 except Exception as e:
-                    print('metadata ' + str(e))
+                    logger.error('Remote: metadata {}'.format(str(e)))
         except Exception as e:
-            print(str(e))
+            logger.error('Remote: {}'.format(str(e)))
 
     def updateData(self, server, key):
         self.key = key
         try:
             data = server.container(key)['_children'][0]
         except Exception as e:
-            print('updateData:' + str(e))
+            logger.error('Remote: updateData: {}'.format(str(e)))
         else:
             self.lbl_title.setText(data.get('title', ''))
             self.lbl_summary.setText(data.get('summary', ''))

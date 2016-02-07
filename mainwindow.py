@@ -1,4 +1,3 @@
-import pickle
 import logging
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
 import plexdevices
@@ -32,7 +31,7 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
     def loadSession(self):
         settings = Settings()
         try:
-            self.session = pickle.loads(settings.value('session'))
+            self.session = plexdevices.Session.load(settings.value('session'))
             self.update_ui()
         except Exception as e:
             logger.error(str(e))
@@ -63,11 +62,10 @@ class PlexApp(QMainWindow, mainwindow_ui.Ui_MainWindow):
             logger.error(str(e))
         try:
             logger.info('MainWindow: saving session')
-            settings.setValue('session', pickle.dumps(self.session))
+            settings.setValue('session', self.session.dump())
         except Exception as e:
             logger.error(str(e))
             utils.msg_box(str(e))
-            return
 
         self.update_ui()
 

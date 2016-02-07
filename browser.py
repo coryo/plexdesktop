@@ -16,8 +16,8 @@ logger = logging.getLogger('plexdesktop')
 
 
 class Browser(QWidget):
-    new_image_selection = pyqtSignal(plexdevices.MediaObject)
-    new_metadata_selection = pyqtSignal(plexdevices.MediaObject)
+    new_image_selection = pyqtSignal(plexdevices.BaseObject)
+    new_metadata_selection = pyqtSignal(plexdevices.BaseObject)
     operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
 
     def __init__(self, session, server, parent=None):
@@ -201,24 +201,30 @@ class Browser(QWidget):
             self.data(media_object=item, params={'query': text})
 
     def item_double_clicked(self, item):
-        if item.is_video or item.is_audio:
-            self.play_list_item(item)
-        elif item.is_photo:
-            self.play_list_item_photo(item)
-        elif item.is_input:
-            self.search_prompt(item)
-        elif item.is_settings:
-            self.preferences_prompt(item)
-        else:
-            self.data(media_object=item)
+        if isinstance(item, plexdevices.DirectoryObject):
+            if item.type == plexdevices.PlexType.INPUT:
+                self.search_prompt(item)
+            elif item.type == plexdevices.PlexType.PREFERENCES:
+                self.preferences_prompt(item)
+            else:
+                self.data(media_object=item)
+        elif isinstance(item, plexdevices.MediaObject):
+            if item.type in [plexdevices.PlexType.MOVIE,
+                             plexdevices.PlexType.EPISODE,
+                             plexdevices.PlexType.CLIP,
+                             plexdevices.PlexType.TRACK]:
+                self.play_list_item(item)
+            elif item.type == plexdevices.PlexType.PHOTO:
+                self.play_list_item_photo(item)
 
     def selection_changed(self):
         if self.ui.list.currentItem() is None:
             return
         m = self.ui.list.currentItem()
-        if m.is_photo:
-            self.new_image_selection.emit(m)
-        if m.is_photo or m.is_video or m.is_audio or m.is_directory:
+        logger.debug(repr(m))
+        if isinstance(m, plexdevices.MediaObject):
+            if m.type == plexdevices.PlexType.PHOTO:
+                self.new_image_selection.emit(m)
             self.new_metadata_selection.emit(m)
         else:
             self.update_metadata_panel(None)
@@ -324,46 +330,57 @@ class Browser(QWidget):
 
         menu = QMenu(self)
         actions = []
-        if item.is_video or item.is_audio:
-            main_action = QAction('Play', menu)
-            main_action.triggered.connect(self.action_play)
-            copy_action = QAction('Copy url', menu)
-            copy_action.triggered.connect(self.action_copy)
-            actions.append(main_action)
-            actions.append(copy_action)
-            if self.mpvplayer is not None and item.parent.is_library:
-                append_action = QAction('Add to Queue', menu)
-                append_action.triggered.connect(self.action_queue)
-                actions.append(append_action)
-        elif item.is_photo:
-            main_action = QAction('View Photo', menu)
-            main_action.triggered.connect(self.action_play_photo)
-            copy_action = QAction('Copy url', menu)
-            copy_action.triggered.connect(self.action_copy)
-            actions.append(main_action)
-            actions.append(copy_action)
-        elif item.is_settings:
-            main_action = QAction('Open', menu)
-            main_action.triggered.connect(self.action_settings)
-            actions.append(main_action)
-        else:
-            main_action = QAction('Open', menu)
-            main_action.triggered.connect(self.action_open)
-            actions.append(main_action)
 
-        if item.is_album:
-            action = QAction('Play all', menu)
-            action.triggered.connect(self.action_play)
-            actions.append(action)
-            if self.mpvplayer is not None and item.parent.is_library:
-                append_action = QAction('Add to Queue', menu)
-                append_action.triggered.connect(self.action_queue)
-                actions.append(append_action)
-
-        if item.is_photo:
-            save_action = QAction('Save', menu)
-            save_action.triggered.connect(self.action_save_photo)
-            actions.append(save_action)
+        if isinstance(item, plexdevices.MediaObject):
+            if item.type in [plexdevices.PlexType.MOVIE,
+                             plexdevices.PlexType.EPISODE,
+                             plexdevices.PlexType.CLIP,
+                             plexdevices.PlexType.TRACK]:
+                main_action = QAction('Play', menu)
+                main_action.triggered.connect(self.action_play)
+                copy_action = QAction('Copy url', menu)
+                copy_action.triggered.connect(self.action_copy)
+                actions.append(main_action)
+                actions.append(copy_action)
+                if self.mpvplayer is not None and item.parent.is_library:
+                    append_action = QAction('Add to Queue', menu)
+                    append_action.triggered.connect(self.action_queue)
+                    actions.append(append_action)
+            elif item.type == plexdevices.PlexType.PHOTO:
+                main_action = QAction('View Photo', menu)
+                main_action.triggered.connect(self.action_play_photo)
+                copy_action = QAction('Copy url', menu)
+                copy_action.triggered.connect(self.action_copy)
+                save_action = QAction('Save', menu)
+                save_action.triggered.connect(self.action_save_photo)
+                actions.append(main_action)
+                actions.append(copy_action)
+                actions.append(save_action)
+            if item.markable:
+                if item.watched:
+                    mark_action = QAction('Mark unwatched', menu)
+                    mark_action.triggered.connect(self.action_mark_unwatched)
+                else:
+                    mark_action = QAction('Mark watched', menu)
+                    mark_action.triggered.connect(self.action_mark_watched)
+                actions.append(mark_action)
+        elif isinstance(item, plexdevices.DirectoryObject):
+            if item.type == plexdevices.PlexType.PREFERENCES:
+                main_action = QAction('Open', menu)
+                main_action.triggered.connect(self.action_settings)
+                actions.append(main_action)
+            else:
+                main_action = QAction('Open', menu)
+                main_action.triggered.connect(self.action_open)
+                actions.append(main_action)
+            if item.type == plexdevices.PlexType.ALBUM:
+                action = QAction('Play all', menu)
+                action.triggered.connect(self.action_play)
+                actions.append(action)
+                if self.mpvplayer is not None and item.parent.is_library:
+                    append_action = QAction('Add to Queue', menu)
+                    append_action.triggered.connect(self.action_queue)
+                    actions.append(append_action)
 
         if item.has_parent:
             open_action = QAction('goto: ' + item.parent_name, menu)
@@ -374,15 +391,6 @@ class Browser(QWidget):
             open_action.triggered.connect(self.action_open_grandparent)
             menu.addAction(open_action)
             actions.append(open_action)
-
-        if item.markable:
-            if item.watched:
-                mark_action = QAction('Mark unwatched', menu)
-                mark_action.triggered.connect(self.action_mark_unwatched)
-            else:
-                mark_action = QAction('Mark watched', menu)
-                mark_action.triggered.connect(self.action_mark_watched)
-            actions.append(mark_action)
 
         for action in actions:
             menu.addAction(action)
@@ -420,13 +428,11 @@ class Browser(QWidget):
 
     def action_mark_watched(self):
         item = self.ui.list.currentItem()
-        if item.markable:
-            item.mark_watched()
+        item.mark_watched()
 
     def action_mark_unwatched(self):
         item = self.ui.list.currentItem()
-        if item.markable:
-            item.mark_unwatched()
+        item.mark_unwatched()
 
     def action_save_photo(self):
         item = self.ui.list.currentItem()
