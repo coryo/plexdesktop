@@ -12,16 +12,16 @@ class ImgWorker(QObject):
     signal = pyqtSignal(bytes)
     finished = pyqtSignal()
 
-    def __init__(self, media_object):
+    def __init__(self, photo_object):
         super(ImgWorker, self).__init__()
-        self.media_object = media_object
+        self.photo_object = photo_object
 
     def run(self):
-        url = self.media_object.resolve_url()
+        url = self.photo_object.media[0].parts[0].resolve_key()
         logger.info('PhotoViewer: ' + url)
         img_data = DB_IMAGE[url]
         if img_data is None:
-            img_data = self.media_object.parent.server.image(url)
+            img_data = self.photo_object.container.server.image(url)
             DB_IMAGE[url] = img_data
         DB_IMAGE.commit()
         self.signal.emit(img_data)
@@ -70,9 +70,9 @@ class PhotoViewer(QWidget):
     def prev(self):
         self.prev_button.emit()
 
-    def load_image(self, media_object):
-        self.setWindowTitle(media_object['title'])
-        self.worker = ImgWorker(media_object)
+    def load_image(self, photo_object):
+        self.setWindowTitle(photo_object.title)
+        self.worker = ImgWorker(photo_object)
         self.worker.signal.connect(self.update_img)
         self.worker.finished.connect(self.ui.indicator.hide)
         self.worker.moveToThread(self.worker_thread)

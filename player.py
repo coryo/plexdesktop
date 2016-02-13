@@ -42,27 +42,14 @@ class TimelineUpdater(QObject):
     done = pyqtSignal()
 
     def update(self, play_queue, item, time, headers, state='playing'):
-        if item is None or 'playQueueItemID' not in item:
-            self.done.emit()
-            return
-        code, res = play_queue.server.request('/:/timeline', headers=headers, params={
-            'state': state,
-            'identifier': play_queue['identifier'],
-            'playQueueItemID': item['playQueueItemID'],
-            'ratingKey': item['ratingKey'],
-            'duration': item.get('duration', 0),
-            'time': min(time, item.get('duration', 0))
-        })
-        logger.debug('Player: TIMELINE {}/{} - {}'.format(utils.timestamp_from_ms(time),
-                                                          utils.timestamp_from_ms(item.get('duration', 0)),
-                                                          code))
+        play_queue.timeline_update(item, time, headers, state)
         self.done.emit()
 
 
 class MPVPlayer(QWidget):
     player_stopped = pyqtSignal(int)
     playback_started = pyqtSignal()
-    update_timeline = pyqtSignal(plexdevices.PlayQueue, plexdevices.MediaObject, int, dict, str)
+    update_timeline = pyqtSignal(plexdevices.PlayQueue, plexdevices.MediaItem, int, dict, str)
     mouse_moved = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -196,10 +183,10 @@ class MPVPlayer(QWidget):
                 self.resize(QSize(video_params['w'], video_params['h'] + self.ui.control_bar.height()))
         except Exception:
             pass
-        if 'viewOffset' in self.current_item:
-            self.current_time = self.current_item['viewOffset']
-            if self.current_item['viewOffset'] > 0:
-                self.mpv.seek(self.current_item['viewOffset'] // 1000, 'absolute')
+        if self.current_item.in_progress:
+            self.current_time = self.current_item.view_offset
+            if self.current_item.view_offset > 0:
+                self.mpv.seek(self.current_item.view_offset // 1000, 'absolute')
         else:
             self.current_time = 0
         self.do_timeline_update(state='playing')
@@ -243,7 +230,7 @@ class MPVPlayer(QWidget):
         self.do_timeline_update(state='playing')
 
     def do_timeline_update(self, state):
-        self.media_object['viewOffset'] = self.current_time#self.ui.slider_progress.value()
+        self.media_object.view_offset = self.current_time#self.ui.slider_progress.value()
         self.update_timeline.emit(self.play_queue, self.current_item,
                                   self.current_time,#self.ui.slider_progress.value(),
                                   self.headers, state)
@@ -269,7 +256,7 @@ class MPVPlayer(QWidget):
                 self.update_current_time(self.current_time)
                 self.ui.slider_progress.setSliderPosition(self.current_time)
 
-    ############################################################################
+    #######################################################################.data#####
 
     def hide_cursor(self):
         if self.isFullScreen():
@@ -282,33 +269,38 @@ class MPVPlayer(QWidget):
         self.ui.lbl_total_time.setText(utils.timestamp_from_ms(milliseconds=value))
 
     def play(self, media_object):
-        self.setWindowTitle(media_object['title'])
+        self.setWindowTitle(media_object.title)
 
         self.media_object = media_object
-        self.play_queue = plexdevices.PlayQueue.create(media_object.parent.server, media_object, self.headers)
-        logger.info('Player: playQueueID={}'.format(self.play_queue['playQueueID']))
+        self.play_queue = plexdevices.PlayQueue.create(media_object, self.headers)
+        logger.info('Player: playQueueID={}'.format(self.play_queue.id))
         self.current_item = (self.play_queue.selected_item
                              if self.play_queue.selected_item is not None
                              else media_object)
 
         self.ui.playlist.add_container2(self.play_queue)
 
-        if 'duration' in self.current_item:
-            self.update_total_time(int(self.current_item['duration']))
-            self.ui.slider_progress.setMaximum(int(self.current_item['duration']))
+        if self.current_item.duration > 0:
+            self.update_total_time(self.current_item.duration)
+            self.ui.slider_progress.setMaximum(self.current_item.duration)
 
-        self.available_streams = self.current_item.get_all_keys()
-        if len(self.available_streams) == 1:
+        # self.available_streams = self.current_item.get_all_keys()
+        # options = self.current_item.media
+        if len(self.current_item.media) == 1:
             # theres only one item
-            resolution, key = self.available_streams[0]
-            url = self.current_item.resolve_key(key)
+            # resolution, key = self.available_streams[0]
+            url = self.current_item.media[0].parts[0].resolve_key()
+            # url = self.current_item.resolve_key(key)
         else:
             # there are multiple items, prompt for a selection
-            items = (str(x[0]) for x in self.available_streams)
-            choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()', 'Stream:', items, 0, False)
+            # items = (str(x[0]) for x in self.available_streams)
+            options = [str(x.height) for x in self.current_item.media]
+            choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()', 'Stream:', options, 0, False)
             if ok:
-                key = [x[1] for x in self.available_streams if str(x[0]) == choice]
-                url = self.current_item.resolve_key(key[0])
+                index = options.index(choice)
+                url = self.current_item.media[index].parts[0].resolve_key()
+                # key = [x[1] for x in self.available_streams if str(x[0]) == choice]
+                # url = self.current_item.resolve_key(key[0])
             else:
                 self.close()
                 return

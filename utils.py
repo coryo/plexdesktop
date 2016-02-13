@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import QMessageBox
+from plexdevices import PlexType, Directory, Episode, Movie, Track, Season, Photo
 
 
 def timestamp_from_ms(milliseconds):
@@ -14,48 +15,32 @@ def msg_box(message, title='plexdesktop'):
     msg.exec_()
 
 
-def title(media_object):
-    item_type = media_object.get('type', None)
-    view_group = media_object.parent.get('viewGroup', None)
-    mixed_parents = bool(int(media_object.parent.get('mixedParents', '0')))
-    filters = bool(int(media_object.get('filters', '0')))
-    is_library = media_object.parent.get('identifier', None) == 'com.plexapp.plugins.library'
-    if filters or not is_library:
-        t = media_object['title']
-    else:
-        if view_group == 'episode':
-            t = ('{} - s{:02d}e{:02d} - {}'.format(media_object['grandparentTitle'],
-                                                   int(media_object['parentIndex']),
-                                                   int(media_object['index']),
-                                                   media_object['title'])
-                 if mixed_parents else
-                 's{:02d}e{:02d} - {}'.format(int(media_object.parent['parentIndex']),
-                                              int(media_object['index']),
-                                              media_object['title']))
-        elif view_group == 'season':
-            t = ('{} - {}'.format(media_object.parent['parentTitle'], media_object['title'])
-                 if mixed_parents else
-                 media_object['title'])
-        elif view_group == 'secondary':
-            t = media_object['title']
-        elif view_group == 'movie':
-            t = '{} ({})'.format(media_object['title'], media_object['year'])
-        elif view_group == 'album':
-            t = '{} - {}'.format(media_object['parentTitle'], media_object['title'])
-        elif view_group == 'track':
-            t = media_object['title']
-            if 'index' in media_object:
-                t = str(media_object['index']) + ' - ' + t
+def title(media):
+    container = media.container
+    if isinstance(media, Directory):
+        if isinstance(media, Season):
+            t = '{} - {}'.format(media.parent_title, media.title)
+            if media.unwatched_count > 0:
+                t += ' ({})'.format(media.unwatched_count)
+            return t
         else:
-            if item_type == 'episode':
-                t = '{} - s{:02d}e{:02d} - {}'.format(media_object['grandparentTitle'],
-                                                      int(media_object['parentIndex']),
-                                                      int(media_object['index']),
-                                                      media_object['title'])
-            elif item_type == 'season':
-                t = '{} - {}'.format(media_object['parentTitle'], media_object['title'])
-            elif item_type == 'movie':
-                t = '{} ({})'.format(media_object['title'], media_object['year'])
-            else:
-                t = media_object['title']
-    return t
+            return media.title
+    else:
+        if container.filters or not container.is_library:
+            return media.title
+
+        if isinstance(media, Episode):
+            t = 's{:02d}e{:02d} - {}'.format(media.parent_index,
+                                             media.index,
+                                             media.title)
+            if container.mixed_parents:
+                t = media.grandparent_title + ' - ' + t
+            return t
+        elif isinstance(media, Movie):
+            return '{} ({}) {}'.format(media.title, media.year, media.rating)
+        elif isinstance(media, Track):
+            return '{} - {}'.format(media.index, media.title)
+        elif isinstance(media, Photo):
+            return media.title
+        else:
+            return media.title
