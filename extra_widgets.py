@@ -48,13 +48,38 @@ class AspectRatioLabel(QLabel):
         super().setPixmap(self.pix.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
 
+class ManualServerDialog(QDialog):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Manual Add Server')
+        self.form = QFormLayout(self)
+        self.secure = QCheckBox()
+        self.address = QLineEdit()
+        self.port = QLineEdit('32400')
+        self.token = QLineEdit()
+        self.form.addRow(QLabel('HTTPS?'), self.secure)
+        self.form.addRow(QLabel('Address'), self.address)
+        self.form.addRow(QLabel('Port'), self.port)
+        self.form.addRow(QLabel('Access Token (optional)'), self.token)
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.form.addRow(self.buttons)
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self.accept)
+
+    def data(self):
+        return ('https' if self.secure.checkState() == Qt.Checked else 'http', self.address.text(), self.port.text(), self.token.text())
+
+
 class PreferencesObjectDialog(QDialog):
 
     def __init__(self, media_object, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Preferences')
         self.form = QFormLayout(self)
-        settings = media_object.follow_key()
+        # settings = media_object.follow_key()
+        server = media_object.container.server
+        settings = server.container(media_object.key)
         self.ids = []
         for item in settings['_children']:
             itype = item['type']
@@ -79,7 +104,7 @@ class PreferencesObjectDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
         if self.exec_() == QDialog.Accepted:
-            media_object.parent.server.request(media_object['key'] + '/set', params=self.extract_values())
+            media_object.container.server.request(media_object.key + '/set', params=self.extract_values())
 
     def extract_values(self):
         values = {}

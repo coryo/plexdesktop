@@ -61,6 +61,9 @@ class Ui_MainWindow(object):
         self.btn_login = QtWidgets.QPushButton(self.centralWidget)
         self.btn_login.setObjectName("btn_login")
         self.formLayout_2.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.btn_login)
+        self.btn_manual_server = QtWidgets.QPushButton(self.centralWidget)
+        self.btn_manual_server.setObjectName("btn_manual_server")
+        self.formLayout_2.setWidget(3, QtWidgets.QFormLayout.LabelRole, self.btn_manual_server)
         self.verticalLayout.addLayout(self.formLayout_2)
         MainWindow.setCentralWidget(self.centralWidget)
 
@@ -75,4 +78,5 @@ class Ui_MainWindow(object):
         self.user.setPlaceholderText(_translate("MainWindow", "username"))
         self.password.setPlaceholderText(_translate("MainWindow", "password"))
         self.btn_login.setText(_translate("MainWindow", "Login / Refresh"))
+        self.btn_manual_server.setText(_translate("MainWindow", "Manual Add Server..."))
 

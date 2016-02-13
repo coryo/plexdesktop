@@ -109,6 +109,13 @@
         </property>
        </widget>
       </item>
+      <item row="3" column="0">
+       <widget class="QPushButton" name="btn_manual_server">
+        <property name="text">
+         <string>Manual Add Server...</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </item>
    </layout>
