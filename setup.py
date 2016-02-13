@@ -3,7 +3,7 @@ from cx_Freeze import setup, Executable
 import requests.certs
 
 NAME = 'plexdesktop'
-VERSION = '0.1'
+VERSION = '0.0.3'
 DESCRIPTION = 'Plex Desktop Client'
 EXE = NAME
 
