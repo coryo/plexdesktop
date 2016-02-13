@@ -104,6 +104,7 @@ class MpvEventID(c_int):
             CLIENT_MESSAGE, VIDEO_RECONFIG, AUDIO_RECONFIG, METADATA_UPDATE, SEEK, PLAYBACK_RESTART, PROPERTY_CHANGE,
             CHAPTER_CHANGE )
 
+
 class MpvEvent(Structure):
     _fields_ = [('event_id', MpvEventID),
                 ('error', c_int),
@@ -123,13 +124,12 @@ class MpvEvent(Structure):
                 'reply_userdata': self.reply_userdata,
                 'event': cast(self.data, POINTER(dtype)).contents.as_dict() if dtype else None}
 
+
 class MpvEventProperty(Structure):
     _fields_ = [('name', c_char_p),
                 ('format', MpvFormat),
                 ('data', c_void_p)]
     def as_dict(self):
-        # pass # FIXME
-        # return { name: getattr(self, name) for name, _t in self._fields_ }
         dtype = {MpvFormat.NONE       : None,
                  MpvFormat.STRING     : c_char_p,
                  MpvFormat.OSD_STRING : c_char_p,
@@ -140,9 +140,10 @@ class MpvEventProperty(Structure):
                  MpvFormat.NODE_ARRAY : None,
                  MpvFormat.NODE_MAP   : None
                 }.get(self.format.value, None)
-        return {'name': getattr(self, 'name').decode(),
-                'format': getattr(self, 'format'),
+        return {'name': self.name.decode(),
+                'format': self.format,
                 'data': cast(self.data, POINTER(dtype)).contents.value if dtype else None}
+
 
 class MpvEventLogMessage(Structure):
     _fields_ = [('prefix', c_char_p),
@@ -151,6 +152,7 @@ class MpvEventLogMessage(Structure):
 
     def as_dict(self):
         return { name: getattr(self, name) for name, _t in self._fields_ }
+
 
 class MpvEventEndFile(c_int):
     EOF_OR_INIT_FAILURE = 0
@@ -161,12 +163,14 @@ class MpvEventEndFile(c_int):
     def as_dict(self):
         return {'reason': self.value}
 
+
 class MpvEventScriptInputDispatch(Structure):
     _fields_ = [('arg0', c_int),
                 ('type', c_char_p)]
 
     def as_dict(self):
         pass # TODO
+
 
 class MpvEventClientMessage(Structure):
     _fields_ = [('num_args', c_int),
@@ -190,7 +194,10 @@ def _handle_func(name, args=[], res=None):
             ErrorCode.raise_for_ec(func, *args)
     globals()['_'+name] = wrapper
 
+
 backend.mpv_client_api_version.restype = c_ulong
+
+
 def _mpv_client_api_version():
     ver = backend.mpv_client_api_version()
     return ver>>16, ver&0xFFFF
@@ -256,6 +263,7 @@ class ynbool:
     def __repr__(self):
         return str(self.val)
 
+
 def _ensure_encoding(possibly_bytes):
     return possibly_bytes.decode() if type(possibly_bytes) is bytes else possibly_bytes
 
@@ -270,10 +278,12 @@ def _event_generator(handle):
             raise StopIteration()
         yield event
 
+
 def load_lua():
     """ Use this function if you intend to use mpv's built-in lua interpreter. This is e.g. needed for playback of
     youtube urls. """
     CDLL('liblua.so', mode=RTLD_GLOBAL)
+
 
 class MPV:
     """ See man mpv(1) for the details of the implemented commands. """
@@ -323,7 +333,7 @@ class MPV:
         self.command('add', 'volume', str(amount))
 
     def revert_seek(self):
-        self.command('revert_seek');
+        self.command('revert_seek')
 
     def frame_step(self):
         self.command('frame_step')
