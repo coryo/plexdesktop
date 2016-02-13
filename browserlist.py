@@ -53,43 +53,44 @@ class DetailsViewDelegate(QStyledItemDelegate):
                                           option.palette, True, title_text)
         painter.restore()
         # Watched
-        if isinstance(data, plexdevices.MediaObject) and not data.watched and not data.in_progress:
-            rect = QRect(title_rect.topRight(), title_rect.bottomRight() + QPoint(title_rect.height(), 0))
-            point = title_rect.topRight() + QPoint(title_font_metrics.height(), title_rect.height() / 2)
-            painter.save()
-            painter.setBrush(QBrush(QColor(204, 123, 25)))
-            r = (title_font_metrics.height() * 0.75) // 2
-            painter.setRenderHint(QPainter.Antialiasing, True)
-            painter.drawEllipse(point, r, r)
-            painter.restore()
-        # # Summary text
-        # if 'summary' in data:
-        #     painter.save()
-        #     summary_text = data['summary']
-        #     painter.setFont(summary_font)
-        #     summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
-        #     QApplication.style().drawItemText(painter, summary_rect,
-        #                                        Qt.AlignLeft | Qt.TextWordWrap,
-        #                                        option.palette, True, summary_text)
-        #     painter.restore()
-        # Progress bar
-        if 'viewOffset' in data and 'duration' in data:
-            painter.save()
-            painter.setFont(summary_font)
-            progress = QStyleOptionProgressBar()
-            progress.rect = QRect(option.rect.bottomLeft() - QPoint(-thumb.width() - padding,
-                                  summary_font_metrics.height()), option.rect.bottomRight())
-            progress.state |= QStyle.State_Enabled
-            progress.direction = QApplication.layoutDirection()
-            progress.fontMetrics = QApplication.fontMetrics()
-            progress.minimum = 0
-            progress.maximum = 100
-            progress.progress = 100 * int(data['viewOffset']) / int(data['duration'])
-            progress.text = (utils.timestamp_from_ms(int(data['viewOffset'])) + " / " +
-                             utils.timestamp_from_ms(int(data['duration'])))
-            progress.textVisible = True
-            QApplication.style().drawControl(QStyle.CE_ProgressBar, progress, painter, self.progress_bar)
-            painter.restore()
+        if isinstance(data, plexdevices.MediaItem) and data.markable:
+            if not data.watched and not data.in_progress:
+                rect = QRect(title_rect.topRight(), title_rect.bottomRight() + QPoint(title_rect.height(), 0))
+                point = title_rect.topRight() + QPoint(title_font_metrics.height(), title_rect.height() / 2)
+                painter.save()
+                painter.setBrush(QBrush(QColor(204, 123, 25)))
+                r = (title_font_metrics.height() * 0.75) // 2
+                painter.setRenderHint(QPainter.Antialiasing, True)
+                painter.drawEllipse(point, r, r)
+                painter.restore()
+            # # Summary text
+            # if 'summary' in data:
+            #     painter.save()
+            #     summary_text = data['summary']
+            #     painter.setFont(summary_font)
+            #     summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
+            #     QApplication.style().drawItemText(painter, summary_rect,
+            #                                        Qt.AlignLeft | Qt.TextWordWrap,
+            #                                        option.palette, True, summary_text)
+            #     painter.restore()
+            # Progress bar
+            if data.in_progress:
+                painter.save()
+                painter.setFont(summary_font)
+                progress = QStyleOptionProgressBar()
+                progress.rect = QRect(option.rect.bottomLeft() - QPoint(-thumb.width() - padding,
+                                      summary_font_metrics.height()), option.rect.bottomRight())
+                progress.state |= QStyle.State_Enabled
+                progress.direction = QApplication.layoutDirection()
+                progress.fontMetrics = QApplication.fontMetrics()
+                progress.minimum = 0
+                progress.maximum = 100
+                progress.progress = 100 * data.view_offset / data.duration
+                progress.text = (utils.timestamp_from_ms(data.view_offset) + " / " +
+                                 utils.timestamp_from_ms(data.duration))
+                progress.textVisible = True
+                QApplication.style().drawControl(QStyle.CE_ProgressBar, progress, painter, self.progress_bar)
+                painter.restore()
 
     def sizeHint(self, option, index):
         data = index.data(role=Qt.UserRole)
@@ -130,7 +131,7 @@ class ListModel(QAbstractListModel):
 
     def _done(self, success):
         if success:
-            t1, t2 = self.container.get('title1', ''), self.container.get('title2', '')
+            t1, t2 = self.container.title1, self.container.title2
             self.done.emit(t1, t2)
         else:
             self.done.emit('', '')
@@ -147,8 +148,9 @@ class ListModel(QAbstractListModel):
 
             self.endInsertRows()
 
+        self._thumb_worker.work = True
         for i, item in enumerate(container.children):  # TODO: this seems kind of dumb
-            if 'thumb' in item:
+            if item.thumb is not None:
                 self.new_item.emit(item, i + start_len)
         self.busy = False
 
@@ -168,6 +170,7 @@ class ListModel(QAbstractListModel):
     def set_container(self, server, key, page=0, size=50, sort="", params={}):
         if self.busy:
             return
+        self._thumb_worker.work = False
         self.beginResetModel()
         self.busy = True
         self.server = server
@@ -177,9 +180,8 @@ class ListModel(QAbstractListModel):
         self.sort = sort
         self.params = params
         self.container = None
-        self._thumb_worker.work = False
+
         DB_THUMB.commit()
-        self._thumb_worker.work = True
         self.operate.emit(self.server, self.key, self.page, self.container_size,
                           self.sort, self.params)
         self.page += 1
@@ -191,32 +193,37 @@ class ListModel(QAbstractListModel):
         if self.container is None:
             return QVariant()
         if role == Qt.DisplayRole:
-            return self.container.children[index.row()]['title']
+            return self.container.children[index.row()].title
         elif role == Qt.UserRole:
             return self.container.children[index.row()]
         elif role == Qt.DecorationRole:
-            img = self.container.children[index.row()].get('icon', QPixmap())
+            try:
+                img = self.container.children[index.row()].user_data
+            except AttributeError:
+                img = None
+            if img is None:
+                img = QPixmap()
             return (img if img.isNull() else
-                    self.container.children[index.row()]['icon'].scaled(
+                    self.container.children[index.row()].user_data.scaled(
                         self.parent().iconSize(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def setData(self, index, value, role):
         if index.data(role=Qt.UserRole) is None:
             return
         if role == Qt.DecorationRole:
-            index.data(role=Qt.UserRole)['icon'] = value
+            index.data(role=Qt.UserRole).user_data = value
             self.dataChanged.emit(index, index, [Qt.DecorationRole])
 
     def canFetchMore(self, index):
         return (False if self.container is None or not len(self.container.children) else
-                len(self.container.children) < int(self.container.get('totalSize', 0)))
+                len(self.container.children) < self.container.total_size)
 
     def fetchMore(self, parent):
-        start_len = len(self.container.children)
-        remaining = self.container['totalSize'] - len(self.container.children)
+        start_len = len(self.container)
+        remaining = self.container.total_size - len(self.container)
         items_to_fetch = min(self.container_size, remaining)
-        self.beginInsertRows(QModelIndex(), len(self.container.children),
-                             len(self.container.children) + items_to_fetch - 1)
+        self.beginInsertRows(QModelIndex(), len(self.container),
+                             len(self.container) + items_to_fetch - 1)
         self.operate.emit(self.server, self.key, self.page, self.container_size,
                           self.sort, self.params)
         self.page += 1
@@ -261,8 +268,9 @@ class ListView(QListView):
         self.last_icon_size = QSize(x, x)
         self.setIconSize(self.last_icon_size)
 
-    def add_container(self, server, key, page=0, size=50, sort="", params={}):
-        self.container_request.emit(server, key, page, size, sort, params)
+    def add_container(self, server, key, page=0, size=50, sort="", params=None):
+        self.container_request.emit(server, key, page, size, sort,
+                                    params if params is not None else {})
 
     def add_container2(self, container):
         self.model.set_container2(container)
@@ -326,17 +334,17 @@ class ThumbWorker(QObject):
         if not self.work:
             return
         self.media_object = media_object
-        url = media_object['thumb']
-        key = media_object.parent.server.client_identifier + url
+        url = media_object.thumb
+        key = media_object.container.server.client_identifier + url
         key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
         img = QPixmapCache.find(key_hash)
         if img is None:
             img_data = DB_THUMB[url]
             if img_data is None:  # not in cache, fetch from server
-                if media_object.parent.is_library:  # trancode
-                    img_data = media_object.parent.server.image(url, w=300, h=300)
+                if media_object.container.is_library:  # trancode
+                    img_data = media_object.container.server.image(url, w=300, h=300)
                 else:  # don't transcode
-                    img_data = media_object.parent.server.image(url)
+                    img_data = media_object.container.server.image(url)
                 DB_THUMB[url] = img_data
             img = QPixmap()
             img.loadFromData(img_data)

@@ -32,6 +32,8 @@ class Browser(QWidget):
         self.image_viewer = None
         self.container_size = 50
 
+        self.shortcuts = {}
+
         # Servers combo box
         self.update_servers()
         self.ui.servers.setCurrentIndex(self.session.servers.index(server))
@@ -61,6 +63,7 @@ class Browser(QWidget):
         self.ui.btn_test.pressed.connect(self.reload_stylesheet)
         self.ui.btn_reload.pressed.connect(self.reload)
         self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
+        self.ui.btn_add_shortcut.pressed.connect(self.add_shortcut)
         # Zoom slider
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
         # Sort combobox
@@ -90,12 +93,18 @@ class Browser(QWidget):
         settings = Settings()
         settings.setValue('last_server', server.client_identifier)
         self.server = server
-        self.location = '/library/sections'
-        self.history = [(self.location, 0, {})]
-        self.data(key=self.location)
+        self.location = ('/library/sections', 0, None)
+        self.history = [self.location]
+        self.shortcuts = {}
 
-    def data(self, media_object=None, key=None, history=True, sort=0, params={}):
-        key = key if media_object is None else media_object['key']
+        self.load_shortcuts()
+        try:
+            self.data(key=self.location[0])
+        except Exception as e:
+            logger.error('Browser: initialize: ' + str(e))
+
+    def data(self, media_object=None, key=None, history=True, sort=0, params=None):
+        key = key if media_object is None else media_object.key
         if not key.startswith('/'):
             key = self.location[0] + '/' + key
         logger.info('Browser: key=' + key)
@@ -107,10 +116,67 @@ class Browser(QWidget):
         self.ui.list.add_container(self.server, key, 0, self.container_size,
                                    self.ui.sort.itemData(sort), params)
 
+        self.toggle_shortcut_button()
+
         if history and self.history[-1] != self.location:
             if self.history[-1][0] == key:
                 self.history.pop()
             self.history.append(self.location)
+
+    def toggle_shortcut_button(self):
+        self.ui.btn_add_shortcut.disconnect()
+        if self.location in self.shortcuts.values():
+            self.ui.btn_add_shortcut.setText('- shortcut')
+            self.ui.btn_add_shortcut.pressed.connect(self.remove_shortcut)
+        else:
+            self.ui.btn_add_shortcut.setText('+ shortcut')
+            self.ui.btn_add_shortcut.pressed.connect(self.add_shortcut)
+
+    def remove_shortcut(self):
+        try:
+            k = [x for x in self.shortcuts if self.shortcuts[x] == self.location][0]
+        except Exception:
+            logger.debug('failed to remove shortcut')
+        else:
+            del self.shortcuts[k]
+            self.save_shortcuts()
+            self.load_shortcuts()
+            self.toggle_shortcut_button()
+
+    def save_shortcuts(self):
+        s = Settings()
+        s.setValue('shortcuts-{}'.format(self.server.client_identifier), self.shortcuts)
+
+    def add_shortcut(self):
+        name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
+        if ok:
+            self.shortcuts[name] = self.location
+            logger.debug(self.shortcuts)
+            self.save_shortcuts()
+            self.load_shortcuts()
+            self.toggle_shortcut_button()
+
+    def load_shortcuts(self):
+        self.ui.shortcuts.disconnect()
+        self.ui.shortcuts.clear()
+        s = Settings()
+        f = s.value('shortcuts-{}'.format(self.server.client_identifier))
+        logger.debug(f)
+        if f:
+            self.shortcuts = f
+            for name, loc in self.shortcuts.items():
+                self.ui.shortcuts.addItem(name, name)
+            self.ui.shortcuts.show()
+        else:
+            self.ui.shortcuts.hide()
+        self.ui.shortcuts.activated.connect(self.load_shortcut)
+
+    def load_shortcut(self):
+        i = self.ui.shortcuts.currentText()
+        logger.debug(self.shortcuts)
+        logger.debug(i)
+        key, sort, params = self.shortcuts[i]
+        self.data(key=key, sort=sort, params=params)
 
     def change_server(self, index):
         try:
@@ -201,20 +267,18 @@ class Browser(QWidget):
             self.data(media_object=item, params={'query': text})
 
     def item_double_clicked(self, item):
-        if isinstance(item, plexdevices.DirectoryObject):
-            if item.type == plexdevices.PlexType.INPUT:
+        if isinstance(item, plexdevices.Directory):
+            if isinstance(item, plexdevices.InputDirectory):
                 self.search_prompt(item)
-            elif item.type == plexdevices.PlexType.PREFERENCES:
+            elif isinstance(item, plexdevices.PreferencesDirectory):
                 self.preferences_prompt(item)
             else:
                 self.data(media_object=item)
-        elif isinstance(item, plexdevices.MediaObject):
-            if item.type in [plexdevices.PlexType.MOVIE,
-                             plexdevices.PlexType.EPISODE,
-                             plexdevices.PlexType.CLIP,
-                             plexdevices.PlexType.TRACK]:
+        elif isinstance(item, plexdevices.MediaItem):
+            if isinstance(item, (plexdevices.Movie, plexdevices.Episode,
+                                 plexdevices.VideoClip, plexdevices.Track)):
                 self.play_list_item(item)
-            elif item.type == plexdevices.PlexType.PHOTO:
+            elif isinstance(item, plexdevices.Photo):
                 self.play_list_item_photo(item)
 
     def selection_changed(self):
@@ -222,8 +286,8 @@ class Browser(QWidget):
             return
         m = self.ui.list.currentItem()
         logger.debug(repr(m))
-        if isinstance(m, plexdevices.MediaObject):
-            if m.type == plexdevices.PlexType.PHOTO:
+        if isinstance(m, (plexdevices.MediaItem, plexdevices.MediaDirectory)):
+            if isinstance(m, plexdevices.Photo):
                 self.new_image_selection.emit(m)
             self.new_metadata_selection.emit(m)
         else:
@@ -331,41 +395,28 @@ class Browser(QWidget):
         menu = QMenu(self)
         actions = []
 
-        if isinstance(item, plexdevices.MediaObject):
-            if item.type in [plexdevices.PlexType.MOVIE,
-                             plexdevices.PlexType.EPISODE,
-                             plexdevices.PlexType.CLIP,
-                             plexdevices.PlexType.TRACK]:
+        if isinstance(item, plexdevices.MediaItem):
+            if isinstance(item, (plexdevices.Movie, plexdevices.Episode,
+                                 plexdevices.VideoClip, plexdevices.Track)):
                 main_action = QAction('Play', menu)
                 main_action.triggered.connect(self.action_play)
-                copy_action = QAction('Copy url', menu)
-                copy_action.triggered.connect(self.action_copy)
                 actions.append(main_action)
-                actions.append(copy_action)
-                if self.mpvplayer is not None and item.parent.is_library:
+                if self.mpvplayer is not None and item.container.is_library:
                     append_action = QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.action_queue)
                     actions.append(append_action)
-            elif item.type == plexdevices.PlexType.PHOTO:
+            elif isinstance(item, plexdevices.Photo):
                 main_action = QAction('View Photo', menu)
                 main_action.triggered.connect(self.action_play_photo)
-                copy_action = QAction('Copy url', menu)
-                copy_action.triggered.connect(self.action_copy)
                 save_action = QAction('Save', menu)
                 save_action.triggered.connect(self.action_save_photo)
                 actions.append(main_action)
-                actions.append(copy_action)
                 actions.append(save_action)
-            if item.markable:
-                if item.watched:
-                    mark_action = QAction('Mark unwatched', menu)
-                    mark_action.triggered.connect(self.action_mark_unwatched)
-                else:
-                    mark_action = QAction('Mark watched', menu)
-                    mark_action.triggered.connect(self.action_mark_watched)
-                actions.append(mark_action)
-        elif isinstance(item, plexdevices.DirectoryObject):
-            if item.type == plexdevices.PlexType.PREFERENCES:
+            copy_action = QAction('Copy url', menu)
+            copy_action.triggered.connect(self.action_copy)
+            actions.append(copy_action)
+        elif isinstance(item, plexdevices.Directory):
+            if isinstance(item, plexdevices.PreferencesDirectory):
                 main_action = QAction('Open', menu)
                 main_action.triggered.connect(self.action_settings)
                 actions.append(main_action)
@@ -373,21 +424,29 @@ class Browser(QWidget):
                 main_action = QAction('Open', menu)
                 main_action.triggered.connect(self.action_open)
                 actions.append(main_action)
-            if item.type == plexdevices.PlexType.ALBUM:
+            if isinstance(item, (plexdevices.Show, plexdevices.Season, plexdevices.Album, plexdevices.Artist)):
                 action = QAction('Play all', menu)
                 action.triggered.connect(self.action_play)
                 actions.append(action)
-                if self.mpvplayer is not None and item.parent.is_library:
+                if self.mpvplayer is not None and item.container.is_library:
                     append_action = QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.action_queue)
                     actions.append(append_action)
 
+        if item.markable:
+            mark_action = QAction('Mark unwatched', menu)
+            mark_action.triggered.connect(self.action_mark_unwatched)
+            mark_action2 = QAction('Mark watched', menu)
+            mark_action2.triggered.connect(self.action_mark_watched)
+            actions.append(mark_action)
+            actions.append(mark_action2)
+
         if item.has_parent:
-            open_action = QAction('goto: ' + item.parent_name, menu)
+            open_action = QAction('goto: ' + plexdevices.get_type_string(item.parent_type), menu)
             open_action.triggered.connect(self.action_open_parent)
             actions.append(open_action)
         if item.has_grandparent:
-            open_action = QAction('goto: ' + item.grandparent_name, menu)
+            open_action = QAction('goto: ' + plexdevices.get_type_string(item.grandparent_type), menu)
             open_action.triggered.connect(self.action_open_grandparent)
             menu.addAction(open_action)
             actions.append(open_action)
@@ -421,10 +480,10 @@ class Browser(QWidget):
         self.data(media_object=self.ui.list.currentItem())
 
     def action_open_parent(self):
-        self.data(key=self.ui.list.currentItem()['parentKey'] + '/children')
+        self.data(key=self.ui.list.currentItem().parent_key + '/children')
 
     def action_open_grandparent(self):
-        self.data(key=self.ui.list.currentItem()['grandparentKey'] + '/children')
+        self.data(key=self.ui.list.currentItem().grandparent_key + '/children')
 
     def action_mark_watched(self):
         item = self.ui.list.currentItem()
@@ -438,7 +497,7 @@ class Browser(QWidget):
         item = self.ui.list.currentItem()
         url = item.resolve_url()
         ext = url.split('?')[0].split('/')[-1].split('.')[-1]
-        fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item['title']]), ext)
+        fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item.title]), ext)
         logger.debug(('Browser: save_photo: item={}, url={}, ext={}, '
                       'fname={}').format(item, url, ext, fname))
         save_file, filtr = QFileDialog.getSaveFileName(self, 'Open Directory',
@@ -450,7 +509,7 @@ class Browser(QWidget):
             data = DB_IMAGE[url]
             if data is None:
                 logger.debug('Browser: save_photo: downloading image')
-                data = item.parent.server.image(url)
+                data = item.container.server.image(url)
             else:
                 logger.debug('Browser: save_photo: image was in the cache')
         except Exception:
