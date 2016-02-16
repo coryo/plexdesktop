@@ -140,7 +140,7 @@ class MPVPlayer(QWidget):
     @property
     def headers(self):
         return {'X-Plex-Client-Identifier': 'test1',
-                'X-Plex-Device-Name': 'test1'}
+                'X-Plex-Device-Name': 'plexdesktop player'}
 
     def minimumSizeHint(self):
         return QSize(320, 240)
