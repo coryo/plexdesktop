@@ -23,7 +23,7 @@ logging_config = {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': 'plexdesktop.log',
             'formatter': 'f',
-            'backupCount': 0,
+            'backupCount': 1,
             'level': logging.DEBUG
         }
     },
