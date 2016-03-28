@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Browser(object):
     def setupUi(self, Browser):
         Browser.setObjectName("Browser")
-        Browser.resize(425, 304)
+        Browser.resize(433, 550)
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(Browser)
         self.verticalLayout_2.setContentsMargins(4, 4, 4, 4)
         self.verticalLayout_2.setSpacing(2)
@@ -166,8 +166,9 @@ class Ui_Browser(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.zoom.sizePolicy().hasHeightForWidth())
         self.zoom.setSizePolicy(sizePolicy)
+        self.zoom.setMinimumSize(QtCore.QSize(125, 0))
         self.zoom.setMinimum(24)
-        self.zoom.setMaximum(128)
+        self.zoom.setMaximum(300)
         self.zoom.setProperty("value", 32)
         self.zoom.setSliderPosition(32)
         self.zoom.setOrientation(QtCore.Qt.Horizontal)

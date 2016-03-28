@@ -77,7 +77,6 @@ class PreferencesObjectDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Preferences')
         self.form = QFormLayout(self)
-        # settings = media_object.follow_key()
         server = media_object.container.server
         settings = server.container(media_object.key)
         self.ids = []

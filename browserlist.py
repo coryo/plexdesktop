@@ -145,13 +145,7 @@ class ListModel(QAbstractListModel):
         else:
             start_len = len(self.container.children)
             self.container.children += container.children
-
             self.endInsertRows()
-
-        self._thumb_worker.work = True
-        for i, item in enumerate(container.children):  # TODO: this seems kind of dumb
-            if item.thumb is not None:
-                self.new_item.emit(item, i + start_len)
         self.busy = False
 
     def _update_thumb(self, img, i):
@@ -228,9 +222,14 @@ class ListModel(QAbstractListModel):
                           self.sort, self.params)
         self.page += 1
 
+    def has_thumb(self, index):
+        try:
+            return self.container.children[index.row()].user_data is not None
+        except Exception:
+            return False
+
 
 class ListView(QListView):
-    resize_signal = pyqtSignal()
     viewModeChanged = pyqtSignal()
     itemDoubleClicked = pyqtSignal(plexdevices.BaseObject)
     itemSelectionChanged = pyqtSignal(plexdevices.BaseObject)
@@ -239,19 +238,23 @@ class ListView(QListView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._model = ListModel(parent=self)
+        self.setModel(self._model)
+
         self.delegate = DetailsViewDelegate()
         self.delegate_default = QStyledItemDelegate()
         self.setItemDelegate(self.delegate)
-        self.doubleClicked.connect(self.double_click)
+
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setResizeMode(QListView.Adjust)
         self.icon_size(32)
         self.setAlternatingRowColors(True)
 
-        self.model = ListModel(parent=self)
-        self.setModel(self.model)
-        self.container_request.connect(self.model.set_container, type=Qt.QueuedConnection)
-        self.closed.connect(self.model._stop_thread)
+        self.doubleClicked.connect(self.double_click)
+        self.container_request.connect(self.model().set_container, type=Qt.QueuedConnection)
+        self.closed.connect(self.model()._stop_thread)
+        self.verticalScrollBar().valueChanged.connect(self.visibleItemsChanged)
+        self.model().done.connect(self.visibleItemsChanged)
 
     def toggle_view_mode(self):
         if self.viewMode() == QListView.ListMode:
@@ -267,13 +270,14 @@ class ListView(QListView):
     def icon_size(self, x):
         self.last_icon_size = QSize(x, x)
         self.setIconSize(self.last_icon_size)
+        self.visibleItemsChanged()
 
     def add_container(self, server, key, page=0, size=50, sort="", params=None):
         self.container_request.emit(server, key, page, size, sort,
                                     params if params is not None else {})
 
     def add_container2(self, container):
-        self.model.set_container2(container)
+        self.model().set_container2(container)
 
     def double_click(self, index):
         self.itemDoubleClicked.emit(index.data(role=Qt.UserRole))
@@ -298,6 +302,35 @@ class ListView(QListView):
     def closeEvent(self, event):
         self.closed.emit()
         super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        self.visibleItemsChanged()
+        super().resizeEvent(event)
+
+    def visibleItemsChanged(self):
+        indexes = self.visible_items()
+        self.model()._thumb_worker.work = True
+        for index in indexes:
+            if self.model().has_thumb(index):
+                continue
+            item = index.data(Qt.UserRole)
+            if item is not None:
+                self.model().new_item.emit(item, index.row())
+
+    def visible_items(self):
+        if not self.model().rowCount():
+            return []
+        min_item = self.indexAt(QPoint(5, 5))
+        max_item = self.indexAt(QPoint(5, self.height() - 5))
+        if min_item is None:
+            min_item = self.model().index(0)
+        if max_item is None:
+            max_item = self.model().index(self.model().rowCount() - 1)
+        min_row, max_row = min_item.row(), max_item.row()
+        if max_row < 0:
+            max_row = self.model().rowCount()
+        max_row = min(self.model().rowCount(), max_row + 1)
+        return [self.model().index(x) for x in range(min_row, max_row)]
 
 
 class ContainerWorker(QObject):
@@ -335,6 +368,8 @@ class ThumbWorker(QObject):
             return
         self.media_object = media_object
         url = media_object.thumb
+        if url is None:
+            return
         key = media_object.container.server.client_identifier + url
         key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
         img = QPixmapCache.find(key_hash)

@@ -50,9 +50,9 @@ class Browser(QWidget):
         self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
         self.ui.list.customContextMenuRequested.connect(self.context_menu)
         self.ui.list.itemSelectionChanged.connect(self.selection_changed)
-        self.ui.list.model.working.connect(self.ui.indicator.show)
-        self.ui.list.model.done.connect(self.ui.indicator.hide)
-        self.ui.list.model.done.connect(self.update_path)
+        self.ui.list.model().working.connect(self.ui.indicator.show)
+        self.ui.list.model().done.connect(self.ui.indicator.hide)
+        self.ui.list.model().done.connect(self.update_path)
         # Buttons
         self.ui.btn_back.clicked.connect(self.back)
         self.ui.btn_on_deck.clicked.connect(self.on_deck)
