@@ -17,11 +17,14 @@ class ImgWorker(QObject):
         self.photo_object = photo_object
 
     def run(self):
-        url = self.photo_object.media[0].parts[0].resolve_key()
+        url, data = self.photo_object.media[0].parts[0].resolve_key(), None
+        if isinstance(url, bytes):
+            data = url
+            url = self.photo_object.media[0].parts[0].key
         logger.info('PhotoViewer: ' + url)
         img_data = DB_IMAGE[url]
         if img_data is None:
-            img_data = self.photo_object.container.server.image(url)
+            img_data = self.photo_object.container.server.image(url) if data is None else data
             DB_IMAGE[url] = img_data
         DB_IMAGE.commit()
         self.signal.emit(img_data)
