@@ -85,7 +85,7 @@ class DetailsViewDelegate(QStyledItemDelegate):
                 progress.fontMetrics = QApplication.fontMetrics()
                 progress.minimum = 0
                 progress.maximum = 100
-                progress.progress = 100 * data.view_offset / data.duration
+                progress.progress = 100 * data.view_offset / max(1, data.duration)
                 progress.text = (utils.timestamp_from_ms(data.view_offset) + " / " +
                                  utils.timestamp_from_ms(data.duration))
                 progress.textVisible = True
@@ -331,6 +331,9 @@ class ListView(QListView):
             max_row = self.model().rowCount()
         max_row = min(self.model().rowCount(), max_row + 1)
         return [self.model().index(x) for x in range(min_row, max_row)]
+
+    def minimumSizeHint(self):
+        return QSize(0, 0)
 
 
 class ContainerWorker(QObject):

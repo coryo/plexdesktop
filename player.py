@@ -1,9 +1,9 @@
 import logging
-from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow
+from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow, QAction, QMenu
 from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
+from PyQt5.QtGui import QCursor
 import player_ui
 from settings import Settings
-from browserlist import ListView
 import utils
 import mpv
 import plexdevices
@@ -63,6 +63,7 @@ class MPVPlayer(QWidget):
         self.ui.playlist.setItemDelegate(self.ui.playlist.delegate_default)
         self.ui.playlist.itemDoubleClicked.connect(self.playlist_item_double_clicked)
         self.ui.btn_playlist.pressed.connect(self.toggle_playlist)
+        self.ui.playlist.customContextMenuRequested.connect(self.playlist_context_menu)
 
         self.setMinimumSize(self.minimumSizeHint())
 
@@ -145,8 +146,8 @@ class MPVPlayer(QWidget):
         return {'X-Plex-Client-Identifier': 'test1',
                 'X-Plex-Device-Name': 'plexdesktop player'}
 
-    def minimumSizeHint(self):
-        return QSize(320, 240)
+    # def minimumSizeHint(self):
+    #     return QSize(320, 240)
 
     def change_audio_track(self, index):
         track = self.ui.audio_tracks.itemData(index)
@@ -171,6 +172,15 @@ class MPVPlayer(QWidget):
     def toggle_playlist(self):
         self.ui.playlist.setVisible(not self.ui.playlist.isVisible())
 
+    def playlist_context_menu(self, pos):
+        item = self.ui.playlist.currentItem()
+        menu = QMenu(self)
+        remove = QAction('Remove', menu)
+        remove.triggered.connect(self.playlist_remove_item)
+        menu.addAction(remove)
+        if not menu.isEmpty():
+            menu.exec_(QCursor.pos())
+
     def playlist_prev(self):
         self.playlist_play_item(self.play_queue.get_prev())
 
@@ -188,6 +198,12 @@ class MPVPlayer(QWidget):
     def playlist_queue_item(self, item):
         if self.play_queue is not None:
             self.play_queue.add_item(item, self.headers)
+            self.ui.playlist.add_container2(self.play_queue)
+
+    def playlist_remove_item(self):
+        if self.play_queue is not None:
+            item = self.ui.playlist.currentItem()
+            self.play_queue.remove_item(item)
             self.ui.playlist.add_container2(self.play_queue)
 
     ############################################################################
@@ -295,6 +311,9 @@ class MPVPlayer(QWidget):
             self.ui.audio_tracks.currentIndexChanged.connect(self.change_audio_track)
             self.ui.sub_tracks.currentIndexChanged.connect(self.change_sub_track)
             self.ui.video_tracks.currentIndexChanged.connect(self.change_sub_track)
+
+            self.ui.player_widget.setVisible(self.ui.video_tracks.count() > 0)
+            self.ui.playlist.setVisible(not self.ui.player_widget.isVisible())
 
     ############################################################################
 
