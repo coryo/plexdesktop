@@ -81,6 +81,7 @@ class MPVPlayer(QWidget):
         self.mpv.observe_property(0, 'playback-time', mpv.MpvFormat.DOUBLE)
         self.mpv.observe_property(0, 'duration', mpv.MpvFormat.DOUBLE)
         self.mpv.observe_property(0, 'volume', mpv.MpvFormat.DOUBLE)
+        self.mpv.observe_property(0, 'track-list', mpv.MpvFormat.NODE)
         self.mpv.request_log_messages('info')
 
         self._event_handlers = {
@@ -119,15 +120,17 @@ class MPVPlayer(QWidget):
         self.last_volume = int(self.settings.value('last_volume', 0))
         self.drag_position = None
         self._playback_time_count = 0
-        self.paused = False
         self.play_queue = None
         self.current_item = None
         self.next_item = None
         self.resized = False
         self.current_time = 0
 
-        self.mpv.add_volume(-100)
-        self.mpv.add_volume(self.last_volume)
+        try:
+            self.mpv.volume = self.last_volume
+        except Exception:
+            pass
+        self.mpv.ontop = False
 
         self.ui.slider_progress.sliderReleased.connect(self.seek)
         self.ui.slider_progress.sliderMoved.connect(self.update_current_time)
@@ -144,6 +147,25 @@ class MPVPlayer(QWidget):
 
     def minimumSizeHint(self):
         return QSize(320, 240)
+
+    def change_audio_track(self, index):
+        track = self.ui.audio_tracks.itemData(index)
+        logger.debug('changing audio track: {}'.format(track))
+        self.mpv.aid = track
+
+    def change_video_track(self, index):
+        track = self.ui.video_tracks.itemData(index)
+        logger.debug('changing video track: {}'.format(track))
+        self.mpv.vid = track
+
+    def change_sub_track(self, index):
+        track = self.ui.sub_tracks.itemData(index)
+        logger.debug('changing sub track: {}'.format(track))
+        if track == -1:
+            self.mpv.sub_visibility = False
+        else:
+            self.mpv.sid = track
+            self.mpv.sub_visibility = True
 
     ############################################################################
     def toggle_playlist(self):
@@ -176,6 +198,7 @@ class MPVPlayer(QWidget):
             self._event_handlers[eventid](event)
 
     def do_file_loaded(self, event):
+        logger.info(event)
         try:
             video_params = self.mpv.video_params
             if not self.resized:
@@ -219,24 +242,21 @@ class MPVPlayer(QWidget):
         self.settings.setValue('last_volume', int(self.last_volume))
         self._event_thread.quit()
         self._event_thread.wait()
-        self.player_stopped.emit(self.current_time)#self.ui.slider_progress.value())
+        self.player_stopped.emit(self.current_time)
 
     def do_pause(self, event):
-        self.paused = True
         self.do_timeline_update(state='paused')
 
     def do_unpause(self, event):
-        self.paused = False
         self.do_timeline_update(state='playing')
 
     def do_timeline_update(self, state):
-        self.media_object.view_offset = self.current_time#self.ui.slider_progress.value()
+        self.media_object.view_offset = self.current_time
         self.update_timeline.emit(self.play_queue, self.current_item,
-                                  self.current_time,#self.ui.slider_progress.value(),
-                                  self.headers, state)
+                                  self.current_time, self.headers, state)
 
     def do_property_change(self, event):
-        if event['data'] is None:
+        if event['data'] is None and event['name'] != 'track-list':
             return
         if event['name'] == 'duration':
             ms = event['data'] * 1000
@@ -255,8 +275,28 @@ class MPVPlayer(QWidget):
             if not self.ui.slider_progress.isSliderDown():
                 self.update_current_time(self.current_time)
                 self.ui.slider_progress.setSliderPosition(self.current_time)
+        elif event['name'] == 'track-list':
+            # The track list changed. update the combo boxes with new tracks.
+            logger.info('track-list: {}'.format(self.mpv.track_list))
+            comboboxes = [self.ui.video_tracks, self.ui.audio_tracks, self.ui.sub_tracks]
+            for combobox in comboboxes:
+                combobox.disconnect()
+                combobox.clear()
+            self.ui.sub_tracks.addItem('None', -1)  # use -1 to disable subs
+            for track in self.mpv.track_list:
+                if track['type'] == 'audio':
+                    self.ui.audio_tracks.addItem('{} ({})'.format(track['lang'], track['codec']), track['id'])
+                elif track['type'] == 'sub':
+                    self.ui.sub_tracks.addItem('{} ({})'.format(track['lang'], track['codec']), track['id'])
+                elif track['type'] == 'video':
+                    self.ui.video_tracks.addItem('{} ({})'.format(track['lang'], track['codec']), track['id'])
+            for combobox in comboboxes:
+                combobox.setVisible(combobox.count() > 1)
+            self.ui.audio_tracks.currentIndexChanged.connect(self.change_audio_track)
+            self.ui.sub_tracks.currentIndexChanged.connect(self.change_sub_track)
+            self.ui.video_tracks.currentIndexChanged.connect(self.change_sub_track)
 
-    #######################################################################.data#####
+    ############################################################################
 
     def hide_cursor(self):
         if self.isFullScreen():
@@ -269,7 +309,7 @@ class MPVPlayer(QWidget):
         self.ui.lbl_total_time.setText(utils.timestamp_from_ms(milliseconds=value))
 
     def play(self, media_object):
-        self.setWindowTitle(media_object.title)
+        self.setWindowTitle(utils.title(media_object))
 
         self.media_object = media_object
         self.play_queue = plexdevices.PlayQueue.create(media_object, self.headers)
@@ -284,23 +324,14 @@ class MPVPlayer(QWidget):
             self.update_total_time(self.current_item.duration)
             self.ui.slider_progress.setMaximum(self.current_item.duration)
 
-        # self.available_streams = self.current_item.get_all_keys()
-        # options = self.current_item.media
         if len(self.current_item.media) == 1:
-            # theres only one item
-            # resolution, key = self.available_streams[0]
             url = self.current_item.media[0].parts[0].resolve_key()
-            # url = self.current_item.resolve_key(key)
         else:
-            # there are multiple items, prompt for a selection
-            # items = (str(x[0]) for x in self.available_streams)
             options = [str(x.height) for x in self.current_item.media]
             choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()', 'Stream:', options, 0, False)
             if ok:
                 index = options.index(choice)
                 url = self.current_item.media[index].parts[0].resolve_key()
-                # key = [x[1] for x in self.available_streams if str(x[0]) == choice]
-                # url = self.current_item.resolve_key(key[0])
             else:
                 self.close()
                 return
@@ -309,7 +340,7 @@ class MPVPlayer(QWidget):
         self.mpv.play(url)
 
     def pause(self):
-        self.mpv.command('cycle', 'pause')
+        self.mpv.pause = not self.mpv.pause
 
     def seek(self):
         try:
@@ -319,8 +350,7 @@ class MPVPlayer(QWidget):
             logger.warning('Player: ' + str(e))
 
     def volume(self):
-        delta = self.ui.slider_volume.value() - self.last_volume
-        self.mpv.add_volume(int(delta))
+        self.mpv.volume = float(self.ui.slider_volume.value())
         self.last_volume = self.ui.slider_volume.value()
 
     def toggle_control_bar(self):
@@ -366,6 +396,6 @@ class MPVPlayer(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Space:
-            self.pause()
+            self.mpv.pause = not self.mpv.pause
         elif event.key() == Qt.Key_QuoteLeft:
             self.toggle_control_bar()

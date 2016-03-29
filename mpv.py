@@ -329,9 +329,6 @@ class MPV:
     def seek(self, amount, reference="relative", precision="default-precise"):
         self.command('seek', amount, reference, precision)
 
-    def add_volume(self, amount):
-        self.command('add', 'volume', str(amount))
-
     def revert_seek(self):
         self.command('revert_seek')
 
