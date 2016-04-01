@@ -1,6 +1,8 @@
 @ECHO off
-CALL pyuic5 mainwindow.ui -o mainwindow_ui.py
-CALL pyuic5 browser.ui -o browser_ui.py
-CALL pyuic5 remote.ui -o remote_ui.py
-CALL pyuic5 player.ui -o player_ui.py
-CALL pyuic5 photo_viewer.ui -o photo_viewer_ui.py
+SET PYUIC=C:\Python34\Lib\site-packages\PyQt5\pyuic5.bat
+
+CALL %PYUIC% plexdesktop\ui\mainwindow.ui -o plexdesktop\ui\mainwindow_ui.py
+CALL %PYUIC% plexdesktop\ui\browser.ui -o plexdesktop\ui\browser_ui.py
+CALL %PYUIC% plexdesktop\ui\remote.ui -o plexdesktop\ui\remote_ui.py
+CALL %PYUIC% plexdesktop\ui\player.ui -o plexdesktop\ui\player_ui.py
+CALL %PYUIC% plexdesktop\ui\photo_viewer.ui -o plexdesktop\ui\photo_viewer_ui.py

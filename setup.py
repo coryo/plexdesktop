@@ -16,9 +16,9 @@ if sys.platform == "win32":
 options = {
     'build_exe': {
         "include_files": [
-            (requests.certs.where(), 'cacert.pem'),
-            ('mpv', 'mpv'),
-            ('plexdesktop.qss', 'plexdesktop.qss')
+            (requests.certs.where(), 'resources/cacert.pem'),
+            ('mpv-1.dll', 'mpv-1.dll'),
+            ('resources/plexdesktop.qss', 'resources/plexdesktop.qss')
         ],
         'optimize': 2
     }
