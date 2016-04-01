@@ -1,9 +1,10 @@
 import sys
 from cx_Freeze import setup, Executable
 import requests.certs
+from plexdesktop import __version__
 
 NAME = 'plexdesktop'
-VERSION = '0.0.3'
+VERSION = __version__
 DESCRIPTION = 'Plex Desktop Client'
 EXE = NAME
 
@@ -25,7 +26,7 @@ options = {
 }
 
 executables = [
-    Executable('main.py', base=base, targetName=EXE)
+    Executable('main.py', base=base, targetName=EXE, icon='resources/icon.ico')
 ]
 
 setup(
