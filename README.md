@@ -1,16 +1,17 @@
 # plexdesktop
-a basic plex client using pyqt5, libmpv, [python-mpv](https://github.com/jaseg/python-mpv).
+a basic plex client using [PyQt5](https://www.riverbankcomputing.com/software/pyqt/download5), [libmpv](https://mpv.io), [python-mpv](https://github.com/jaseg/python-mpv).
 
 ![img](http://i.imgur.com/tRlcLpX.png)
 
 ### Windows:
 Dependencies:
  * python 3.4
- * pyqt5
+ * [PyQt5](https://www.riverbankcomputing.com/software/pyqt/download5)
  * [plexdevices](https://github.com/coryo/plexdevices)
 
 ##### Run
 ```
+pip install plexdevices
 python main.py
 ```
 
@@ -25,9 +26,7 @@ python setup.py build
 sudo apt-get install python3-pyqt5
 sudo apt-get install libmpv1
 
-git clone https://github.com/coryo/plexdevices.git
-cd plexdevices
-pip3 install .
+pip3 install plexdevices
 
 python3 main.py
 ```
@@ -43,9 +42,7 @@ echo 'import site; site.addsitedir("/usr/local/lib/python3.5/site-packages")' >>
 brew tap mpv-player/mpv
 brew install mpv --with-shared
 
-git clone https://github.com/coryo/plexdevices.git
-cd plexdevices
-pip3 install .
+pip3 install plexdevices
 
 python3 main.py
 ```
