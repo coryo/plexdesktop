@@ -1,54 +1,173 @@
 import math
 import logging
 import os
-from PyQt5.QtWidgets import QWidget, QAction, QMenu, QInputDialog, QFileDialog, QApplication, QLineEdit
+import pickle
+from PyQt5.QtWidgets import (QDialog, QMainWindow, QAction, QMenu, QInputDialog,
+                             QFileDialog, QApplication, QLineEdit)
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication
 from PyQt5.QtGui import QCursor
 from plexdesktop.ui.browser_ui import Ui_Browser
+from plexdesktop.ui.login_ui import Ui_Login
 from plexdesktop.settings import Settings
 from plexdesktop.player import MPVPlayer
 from plexdesktop.photo_viewer import PhotoViewer
 from plexdesktop.utils import *
 from plexdesktop.extra_widgets import PreferencesObjectDialog
 from plexdesktop.sqlcache import DB_IMAGE
-
 import plexdevices
-# import utils
 
 logger = logging.getLogger('plexdesktop')
 
 
-class Browser(QWidget):
+class Login(QDialog):
+    def __init__(self, session=None, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_Login()
+        self.ui.setupUi(self)
+        if session is not None:
+            self.ui.username.setText(session.user)
+
+
+class SessionManager(object):
+    def __init__(self):
+        super().__init__()
+        self.session = None
+        self.server = None
+
+    def load_session(self):
+        settings = Settings()
+        try:
+            self.session = pickle.loads(settings.value('session'))
+        except Exception as e:
+            logger.error(str(e))
+        else:
+            self.server = self.get_last_server()
+
+    def save_session(self):
+        settings = Settings()
+        try:
+            logger.info('SessionManager: saving session')
+            settings.setValue('session', pickle.dumps(self.session))
+        except Exception as e:
+            logger.error(str(e))
+            msg_box(str(e))
+
+    def get_last_server(self):
+        settings = Settings()
+        try:
+            logger.debug('SessionManager: get_last_server')
+            last_server = settings.value('last_server')
+            return [x for x in self.session.servers if x.client_identifier == last_server][0]
+        except Exception as e:
+            logger.debug('get_last_server: ' + str(e))
+            if len(self.session.servers):
+                return self.session.servers[0]
+        return None
+
+    def create_session(self, user, passwd):
+        try:
+            logger.debug('SessionManager: creating session')
+            self.session = plexdevices.Session(user=user, password=passwd)
+        except plexdevices.PlexTVError as e:
+            logger.error(str(e))
+            msg_box(str(e))
+        else:
+            self.refresh_devices()
+            self.refresh_users()
+            self.save_session()
+            self.server = self.get_last_server()
+
+    def refresh_devices(self):
+        try:
+            logger.info('SessionManager: refreshing devices')
+            self.session.refresh_devices()
+        except plexdevices.PlexTVError as e:
+            logger.error(str(e))
+            msg_box(str(e))
+
+    def refresh_users(self):
+        try:
+            logger.info('SessionManager: getting plex home users.')
+            self.session.refresh_users()
+        except Exception as e:
+            logger.error(str(e))
+
+    def delete_session(self):
+        settings = Settings()
+        settings.remove('session')
+        self.session = None
+        self.server = None
+
+    def switch_server(self, server):
+        if server in self.session.servers:
+            self.server = server
+
+
+class Browser(QMainWindow):
     new_image_selection = pyqtSignal(plexdevices.BaseObject)
     new_metadata_selection = pyqtSignal(plexdevices.BaseObject)
     operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
 
-    def __init__(self, session, server, parent=None):
+    def update_session_ui(self):
+        session = self.session_manager.session
+        server = self.session_manager.server
+
+        self.update_servers()
+        self.update_users()
+        try:
+            self.update_servers_no_signal(session.servers.index(server) if session is not None else 0)
+        except Exception as e:
+            logger.debug(e)
+        try:
+            self.update_users_no_signal(self.ui.users.findText(session.user))
+        except Exception as e:
+            logger.debug(str(e))
+        self.current_user = self.ui.users.currentText()
+
+    def clear(self):
+        self.ui.list.clear()
+
+    def login(self):
+        d = Login(session=self.session_manager.session)
+        if d.exec_() == QDialog.Accepted:
+            self.ui.indicator.show()
+            logger.info('login!' + d.ui.username.text())
+            self.session_manager.create_session(d.ui.username.text().strip(), d.ui.password.text().strip())
+            self.update_session_ui()
+            logger.info(self.session_manager.session)
+            logger.info(self.session_manager.server)
+            logger.info(self.session_manager.session.servers)
+            self.initialize(self.session_manager.server)
+            self.ui.indicator.hide()
+
+    def logout(self):
+        self.session_manager.delete_session()
+        self.update_session_ui()
+        self.clear()
+
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.ui = Ui_Browser()
         self.ui.setupUi(self)
         self.ui.indicator.hide()
         self.ui.metadata_panel.hide()
 
-        self.session = session
+        self.session_manager = SessionManager()
+        self.session_manager.load_session()
+
         self.mpvplayer = None
         self.image_viewer = None
         self.container_size = 50
 
         self.shortcuts = {}
 
-        # Servers combo box
-        self.update_servers()
-        self.ui.servers.setCurrentIndex(self.session.servers.index(server))
         self.ui.servers.currentIndexChanged.connect(self.change_server)
-        # Users combo box
-        self.update_users()
-        try:
-            self.ui.users.setCurrentIndex(self.ui.users.findText(self.session.user))
-        except Exception as e:
-            logger.debug(str(e))
         self.ui.users.currentIndexChanged.connect(self.change_user)
-        self.current_user = self.ui.users.currentText()
+        # Menu
+        self.ui.actionQuit.triggered.connect(self.close)
+        self.ui.actionLogin_Refresh.triggered.connect(self.login)
+        self.ui.action_Logout.triggered.connect(self.logout)
+        self.ui.action_Reload_Stylesheet.triggered.connect(self.reload_stylesheet)
         # List signals
         self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
         self.ui.list.customContextMenuRequested.connect(self.context_menu)
@@ -63,7 +182,7 @@ class Browser(QWidget):
         self.ui.btn_home.clicked.connect(self.home)
         self.ui.btn_channels.clicked.connect(self.channels)
         self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
-        self.ui.btn_test.pressed.connect(self.reload_stylesheet)
+        # self.ui.btn_test.pressed.connect(self.reload_stylesheet)
         self.ui.btn_reload.pressed.connect(self.reload)
         self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
         self.ui.btn_add_shortcut.pressed.connect(self.add_shortcut)
@@ -87,15 +206,19 @@ class Browser(QWidget):
 
         self.new_metadata_selection.connect(self.update_metadata_panel)
 
-        self.initialize(server)
+        self.update_session_ui()
+        if self.session_manager.server is not None:
+            self.initialize(self.session_manager.server)
         self.show()
 
     def initialize(self, server):
         """ bring the browser to its default state on the given server """
         logger.info('Browser: initializing browser on server={}'.format(server))
+        self.session_manager.switch_server(server)
+
         settings = Settings()
         settings.setValue('last_server', server.client_identifier)
-        self.server = server
+
         self.location = ('/library/sections', 0, None)
         self.history = [self.location]
         self.shortcuts = {}
@@ -107,6 +230,8 @@ class Browser(QWidget):
             logger.error('Browser: initialize: ' + str(e))
 
     def data(self, media_object=None, key=None, history=True, sort=0, params=None):
+        if self.session_manager.session is None:
+            return
         key = key if media_object is None else media_object.key
         if not key.startswith('/'):
             key = self.location[0] + '/' + key
@@ -116,7 +241,7 @@ class Browser(QWidget):
         self.ui.sort.setEnabled(key.startswith('/library'))
 
         self.location = (key, sort, params)
-        self.ui.list.add_container(self.server, key, 0, self.container_size,
+        self.ui.list.add_container(self.session_manager.server, key, 0, self.container_size,
                                    self.ui.sort.itemData(sort), params)
 
         self.toggle_shortcut_button()
@@ -148,7 +273,7 @@ class Browser(QWidget):
 
     def save_shortcuts(self):
         s = Settings()
-        s.setValue('shortcuts-{}'.format(self.server.client_identifier), self.shortcuts)
+        s.setValue('shortcuts-{}'.format(self.session_manager.server.client_identifier), self.shortcuts)
 
     def add_shortcut(self):
         name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
@@ -163,7 +288,7 @@ class Browser(QWidget):
         self.ui.shortcuts.disconnect()
         self.ui.shortcuts.clear()
         s = Settings()
-        f = s.value('shortcuts-{}'.format(self.server.client_identifier))
+        f = s.value('shortcuts-{}'.format(self.session_manager.server.client_identifier))
         logger.debug(f)
         if f:
             self.shortcuts = f
@@ -183,7 +308,7 @@ class Browser(QWidget):
 
     def change_server(self, index):
         try:
-            server = self.session.servers[index]
+            server = self.session_manager.session.servers[index]
         except Exception as e:
             logger.error('Browser: unable to switch server. ' + str(e))
         else:
@@ -194,7 +319,7 @@ class Browser(QWidget):
         last_index = self.ui.users.findText(last_user)
         logger.info('Browser: switching user. {} -> {}'.format(last_user, new_user))
         try:
-            user = self.session.users[index]
+            user = self.session_manager.session.users[index]
             user_id, user_auth = user['id'], bool(int(user['protected']))
         except Exception as e:
             logger.error('Browser: unable to switch user. ' + str(e))
@@ -211,7 +336,7 @@ class Browser(QWidget):
                     return
             logger.debug('Browser: userid={}'.format(user_id))
             try:
-                self.session.switch_user(user_id, pin=pin)
+                self.session_manager.session.switch_user(user_id, pin=pin)
             except plexdevices.PlexTVError as e:
                 logger.error('Browser: ' + str(e))
                 msg_box(str(e))
@@ -335,21 +460,29 @@ class Browser(QWidget):
             app.setStyleSheet(f.read())
 
     def update_servers(self):
+        self.ui.servers.currentIndexChanged.disconnect()
         self.ui.servers.clear()
-        for i, item in enumerate(self.session.servers):
-            self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+        session = self.session_manager.session
+        if session is not None:
+            for i, item in enumerate(session.servers):
+                self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+        self.ui.servers.currentIndexChanged.connect(self.change_server)
 
     def update_users(self):
+        self.ui.users.currentIndexChanged.disconnect()
         self.ui.users.clear()
-        for i, item in enumerate(self.session.users):
-            self.ui.users.addItem(item['title'], i)
-            logger.debug('{} {}'.format(item['title'], item['id']))
+        session = self.session_manager.session
+        if session is not None:
+            for i, item in enumerate(session.users):
+                self.ui.users.addItem(item['title'], i)
+                logger.debug('{} {}'.format(item['title'], item['id']))
+        self.ui.users.currentIndexChanged.connect(self.change_user)
 
     def update_path(self, t1, t2):
         self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
 
     def update_title(self):
-        self.setWindowTitle('{}: {}'.format(self.server.name, self.location[0]))
+        self.setWindowTitle('{}: {}'.format(self.session_manager.server.name, self.location[0]))
 
     def update_metadata_panel(self, media_object):
         if media_object is None:

@@ -122,6 +122,11 @@ class ListModel(QAbstractListModel):
         self.operate.connect(self._working)
         self._worker.finished.connect(self._done)
 
+    def clear(self):
+        self.beginResetModel()
+        self.container = None
+        self.endResetModel()
+
     def _stop_thread(self):
         logger.debug('BrowserList: ListModel: stop thread')
         self._worker_thread.quit()
@@ -256,6 +261,9 @@ class ListView(QListView):
         self.closed.connect(self.model()._stop_thread)
         self.verticalScrollBar().valueChanged.connect(self.visibleItemsChanged)
         self.model().done.connect(self.visibleItemsChanged)
+
+    def clear(self):
+        self.model().clear()
 
     def toggle_view_mode(self):
         if self.viewMode() == QListView.ListMode:

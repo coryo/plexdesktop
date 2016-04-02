@@ -3,6 +3,18 @@
     color: #B9B9B9;
 }
 
+QMenuBar::item {
+    background-color: #3A3A3A;
+}
+
+QMenuBar::item:selected { /* when selected using mouse or keyboard */
+    background: #5A5A5A;
+}
+
+QMenuBar::item:pressed {
+    background: #888888;
+}
+
 QProgressBar {
     border: 1px solid #1F1F1F;
     border-radius: 4px;
