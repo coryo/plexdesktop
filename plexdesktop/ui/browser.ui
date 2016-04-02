@@ -67,6 +67,11 @@
           <height>16777215</height>
          </size>
         </property>
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
         <property name="text">
          <string>R</string>
         </property>
@@ -256,6 +261,11 @@
           <height>0</height>
          </size>
         </property>
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
        </widget>
       </item>
       <item>
@@ -265,6 +275,11 @@
           <width>75</width>
           <height>16777215</height>
          </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
         </property>
         <property name="text">
          <string>+ shortcut</string>
@@ -284,6 +299,11 @@
           <width>20</width>
           <height>16777215</height>
          </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
         </property>
         <property name="text">
          <string>::</string>
@@ -327,6 +347,11 @@
       </item>
       <item>
        <widget class="QComboBox" name="users">
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
         <property name="sizeAdjustPolicy">
          <enum>QComboBox::AdjustToContents</enum>
         </property>
@@ -347,6 +372,11 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_metadata">
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
         <property name="text">
          <string>v</string>
         </property>
@@ -442,14 +472,24 @@
     </property>
     <addaction name="actionPreferences"/>
     <addaction name="action_Reload_Stylesheet"/>
+    <addaction name="actionTrim_Image_Cache"/>
+    <addaction name="actionTrim_Thumb_Cache"/>
    </widget>
    <widget class="QMenu" name="menuSession">
     <property name="title">
      <string>&amp;Session</string>
     </property>
+    <widget class="QMenu" name="menuRemotes">
+     <property name="title">
+      <string>Remotes</string>
+     </property>
+     <addaction name="separator"/>
+    </widget>
     <addaction name="actionLogin_Refresh"/>
     <addaction name="action_Info"/>
     <addaction name="action_Logout"/>
+    <addaction name="menuRemotes"/>
+    <addaction name="actionAdd_Server"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
     <property name="title">
@@ -462,6 +502,7 @@
    <addaction name="menuSession"/>
    <addaction name="menu_Help"/>
   </widget>
+  <widget class="QStatusBar" name="statusbar"/>
   <action name="actionPreferences">
    <property name="text">
     <string>&amp;Preferences</string>
@@ -495,6 +536,21 @@
   <action name="action_Reload_Stylesheet">
    <property name="text">
     <string>&amp;Reload Stylesheet</string>
+   </property>
+  </action>
+  <action name="actionAdd_Server">
+   <property name="text">
+    <string>Add Server...</string>
+   </property>
+  </action>
+  <action name="actionTrim_Image_Cache">
+   <property name="text">
+    <string>Trim Image Cache</string>
+   </property>
+  </action>
+  <action name="actionTrim_Thumb_Cache">
+   <property name="text">
+    <string>Trim Thumb Cache</string>
    </property>
   </action>
  </widget>

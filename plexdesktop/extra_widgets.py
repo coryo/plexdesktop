@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
                              QCheckBox, QComboBox, QLineEdit)
 from PyQt5.QtCore import Qt, QSize, QBuffer
 from PyQt5.QtGui import QPixmap, QImageReader, QTransform
+from plexdesktop.ui.login_ui import Ui_Login
 
 
 class AspectRatioLabel(QLabel):
@@ -135,3 +136,15 @@ class PreferencesObjectDialog(QDialog):
             elif isinstance(widget, QCheckBox):
                 values[pid] = 'true' if widget.checkState() == Qt.Checked else 'false'
         return values
+
+
+class LoginDialog(QDialog):
+    def __init__(self, session=None, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_Login()
+        self.ui.setupUi(self)
+        if session is not None:
+            self.ui.username.setText(session.user)
+
+    def data(self):
+        return (self.ui.username.text(), self.ui.password.text())

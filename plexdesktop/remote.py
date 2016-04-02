@@ -20,6 +20,7 @@ class PlexRemote(QObject, plexdevices.Remote):
 
 
 class Remote(QWidget, Ui_Remote):
+    closed = pyqtSignal(str)
 
     def __init__(self, session, player, port, name='testremotegui', parent=None):
         super(self.__class__, self).__init__(parent)
@@ -32,6 +33,7 @@ class Remote(QWidget, Ui_Remote):
         self.port = port
         self.remote.timeline_signal.connect(self.tl_handler)
         self.key = None
+        self.name = name
         self.picture = QPixmap()
 
         self.btn_up.clicked.connect(self.remote.up)
@@ -51,6 +53,7 @@ class Remote(QWidget, Ui_Remote):
 
     def closeEvent(self, event):
         self.remote.timeline_unsubscribe()
+        self.closed.emit(self.name)
 
     def seek(self):
         self.remote.seek(self.progress.value() * 1000)

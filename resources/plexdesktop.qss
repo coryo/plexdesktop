@@ -15,6 +15,10 @@ QMenuBar::item:pressed {
     background: #888888;
 }
 
+QMenu::item:selected { /* when selected using mouse or keyboard */
+    background: #5A5A5A;
+}
+
 QProgressBar {
     border: 1px solid #1F1F1F;
     border-radius: 4px;

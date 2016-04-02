@@ -33,6 +33,11 @@ class CacheConnection(sqlite3.Connection):
                            'PRAGMA page_size = 1024;')
         self.commit()
 
+    def remove(self, n):
+        self.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY random() LIMIT ?)', (n,))
+        self.commit()
+        self.execute('VACUUM')
+
 
 class AccessCacheConnection(sqlite3.Connection):
 
@@ -64,12 +69,13 @@ class AccessCacheConnection(sqlite3.Connection):
     def createDB(self):
         self.executescript('CREATE TABLE IF NOT EXISTS cache '
                            '(key text UNIQUE, value blob, added INT, accessed INT, PRIMARY KEY(key)); '
-                           'PRAGMA page_size = 8192;')
+                           'PRAGMA page_size = 8192; PRAGMA auto_vacuum=FULL;')
         self.commit()
 
     def remove(self, n):
         self.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY accessed ASC LIMIT ?)', (n,))
         self.commit()
+        self.execute('VACUUM')
 
 
 DB_THUMB = sqlite3.connect('cache_thumb.db', 5, 0, "DEFERRED", False, CacheConnection)

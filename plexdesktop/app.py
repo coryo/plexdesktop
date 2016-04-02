@@ -4,8 +4,6 @@ import logging
 import pickle
 from logging.config import dictConfig
 from PyQt5.QtWidgets import QApplication
-from plexdesktop.settings import Settings
-from plexdesktop.mainwindow import PlexApp
 from plexdesktop.browser import Browser
 import plexdevices
 
@@ -64,20 +62,6 @@ def run():
     app = QApplication(sys.argv)
     with open('resources/plexdesktop.qss', 'r') as stylesheet:
         app.setStyleSheet(stylesheet.read())
-    settings = Settings()
-    # form = PlexApp()
-    # form.show()
-    # try:
-    #     session = pickle.loads(settings.value('session'))
-    # except Exception as e:
-    #     session = None
-    # else:
-    #     try:
-    #         server = [x for x in session.servers
-    #                   if x.client_identifier == settings.value('last_server')][0]
-    #     except ValueError:
-    #         server = None
-
-    form = Browser()#session=session, server=server)
+    form = Browser()
     form.show()
     sys.exit(app.exec_())

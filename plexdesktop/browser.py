@@ -4,34 +4,28 @@ import os
 import pickle
 from PyQt5.QtWidgets import (QDialog, QMainWindow, QAction, QMenu, QInputDialog,
                              QFileDialog, QApplication, QLineEdit)
-from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication
+from PyQt5.QtCore import pyqtSignal, QObject, Qt, QCoreApplication, QThread
 from PyQt5.QtGui import QCursor
 from plexdesktop.ui.browser_ui import Ui_Browser
-from plexdesktop.ui.login_ui import Ui_Login
 from plexdesktop.settings import Settings
 from plexdesktop.player import MPVPlayer
 from plexdesktop.photo_viewer import PhotoViewer
 from plexdesktop.utils import *
-from plexdesktop.extra_widgets import PreferencesObjectDialog
-from plexdesktop.sqlcache import DB_IMAGE
+from plexdesktop.extra_widgets import (PreferencesObjectDialog, ManualServerDialog,
+                                       LoginDialog)
+from plexdesktop.sqlcache import DB_IMAGE, DB_THUMB
+from plexdesktop.remote import Remote
 import plexdevices
 
 logger = logging.getLogger('plexdesktop')
 
 
-class Login(QDialog):
-    def __init__(self, session=None, parent=None):
-        super().__init__(parent)
-        self.ui = Ui_Login()
-        self.ui.setupUi(self)
-        if session is not None:
-            self.ui.username.setText(session.user)
+class SessionManager(QObject):
+    done = pyqtSignal()
 
-
-class SessionManager(object):
     def __init__(self):
         super().__init__()
-        self.session = None
+        self.session = plexdevices.Session()
         self.server = None
 
     def load_session(self):
@@ -76,6 +70,7 @@ class SessionManager(object):
             self.refresh_users()
             self.save_session()
             self.server = self.get_last_server()
+        self.done.emit()
 
     def refresh_devices(self):
         try:
@@ -95,55 +90,25 @@ class SessionManager(object):
     def delete_session(self):
         settings = Settings()
         settings.remove('session')
-        self.session = None
+        self.session = plexdevices.Session()
         self.server = None
 
     def switch_server(self, server):
         if server in self.session.servers:
             self.server = server
 
+    def manual_add_server(self, protocol, address, port, token):
+        logger.debug('{}, {}, {}, {}'.format(protocol, address, port, token))
+        self.session.manual_add_server(address, port, protocol, token)
+        if self.server is None and len(self.session.servers):
+            self.server = self.session.servers[0]
+        self.save_session()
+
 
 class Browser(QMainWindow):
     new_image_selection = pyqtSignal(plexdevices.BaseObject)
     new_metadata_selection = pyqtSignal(plexdevices.BaseObject)
-    operate = pyqtSignal(plexdevices.Device, str, int, int, str, dict)
-
-    def update_session_ui(self):
-        session = self.session_manager.session
-        server = self.session_manager.server
-
-        self.update_servers()
-        self.update_users()
-        try:
-            self.update_servers_no_signal(session.servers.index(server) if session is not None else 0)
-        except Exception as e:
-            logger.debug(e)
-        try:
-            self.update_users_no_signal(self.ui.users.findText(session.user))
-        except Exception as e:
-            logger.debug(str(e))
-        self.current_user = self.ui.users.currentText()
-
-    def clear(self):
-        self.ui.list.clear()
-
-    def login(self):
-        d = Login(session=self.session_manager.session)
-        if d.exec_() == QDialog.Accepted:
-            self.ui.indicator.show()
-            logger.info('login!' + d.ui.username.text())
-            self.session_manager.create_session(d.ui.username.text().strip(), d.ui.password.text().strip())
-            self.update_session_ui()
-            logger.info(self.session_manager.session)
-            logger.info(self.session_manager.server)
-            logger.info(self.session_manager.session.servers)
-            self.initialize(self.session_manager.server)
-            self.ui.indicator.hide()
-
-    def logout(self):
-        self.session_manager.delete_session()
-        self.update_session_ui()
-        self.clear()
+    create_session = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -151,23 +116,31 @@ class Browser(QMainWindow):
         self.ui.setupUi(self)
         self.ui.indicator.hide()
         self.ui.metadata_panel.hide()
+        self.ui.statusbar.hide()
 
         self.session_manager = SessionManager()
         self.session_manager.load_session()
+        self.worker_thread = QThread()
+        self.session_manager.moveToThread(self.worker_thread)
+        self.create_session.connect(self.session_manager.create_session)
+        self.worker_thread.start()
 
+        self.remotes = []
         self.mpvplayer = None
         self.image_viewer = None
         self.container_size = 50
-
         self.shortcuts = {}
 
         self.ui.servers.currentIndexChanged.connect(self.change_server)
         self.ui.users.currentIndexChanged.connect(self.change_user)
         # Menu
         self.ui.actionQuit.triggered.connect(self.close)
-        self.ui.actionLogin_Refresh.triggered.connect(self.login)
-        self.ui.action_Logout.triggered.connect(self.logout)
-        self.ui.action_Reload_Stylesheet.triggered.connect(self.reload_stylesheet)
+        self.ui.actionLogin_Refresh.triggered.connect(self.action_login)
+        self.ui.action_Logout.triggered.connect(self.action_logout)
+        self.ui.action_Reload_Stylesheet.triggered.connect(self.action_reload_stylesheet)
+        self.ui.actionAdd_Server.triggered.connect(self.action_manual_add_server)
+        self.ui.actionTrim_Image_Cache.triggered.connect(self.action_trim_image_cache)
+        self.ui.actionTrim_Thumb_Cache.triggered.connect(self.action_trim_thumb_cache)
         # List signals
         self.ui.list.itemDoubleClicked.connect(self.item_double_clicked)
         self.ui.list.customContextMenuRequested.connect(self.context_menu)
@@ -182,7 +155,6 @@ class Browser(QMainWindow):
         self.ui.btn_home.clicked.connect(self.home)
         self.ui.btn_channels.clicked.connect(self.channels)
         self.ui.btn_view_mode.pressed.connect(self.ui.list.toggle_view_mode)
-        # self.ui.btn_test.pressed.connect(self.reload_stylesheet)
         self.ui.btn_reload.pressed.connect(self.reload)
         self.ui.btn_metadata.pressed.connect(self.toggle_metadata_panel)
         self.ui.btn_add_shortcut.pressed.connect(self.add_shortcut)
@@ -207,12 +179,14 @@ class Browser(QMainWindow):
         self.new_metadata_selection.connect(self.update_metadata_panel)
 
         self.update_session_ui()
-        if self.session_manager.server is not None:
-            self.initialize(self.session_manager.server)
+        self.initialize(self.session_manager.server)
+
         self.show()
 
     def initialize(self, server):
-        """ bring the browser to its default state on the given server """
+        """load the given server into the browser."""
+        if server is None:
+            return
         logger.info('Browser: initializing browser on server={}'.format(server))
         self.session_manager.switch_server(server)
 
@@ -273,7 +247,8 @@ class Browser(QMainWindow):
 
     def save_shortcuts(self):
         s = Settings()
-        s.setValue('shortcuts-{}'.format(self.session_manager.server.client_identifier), self.shortcuts)
+        s.setValue('shortcuts-{}'.format(self.session_manager.server.client_identifier),
+                   self.shortcuts)
 
     def add_shortcut(self):
         name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
@@ -292,11 +267,9 @@ class Browser(QMainWindow):
         logger.debug(f)
         if f:
             self.shortcuts = f
-            for name, loc in self.shortcuts.items():
+            for name, loc in f.items():
                 self.ui.shortcuts.addItem(name, name)
-            self.ui.shortcuts.show()
-        else:
-            self.ui.shortcuts.hide()
+        self.ui.shortcuts.setVisible(self.ui.shortcuts.count() > 0)
         self.ui.shortcuts.activated.connect(self.load_shortcut)
 
     def load_shortcut(self):
@@ -324,26 +297,32 @@ class Browser(QMainWindow):
         except Exception as e:
             logger.error('Browser: unable to switch user. ' + str(e))
             self.update_users_no_signal(last_index)
-        else:
-            pin = None
-            if user_auth:
-                text, ok = QInputDialog.getText(self, 'Switch User', 'PIN:',
-                                                QLineEdit.Password)
-                if ok:
-                    pin = text
-                else:
-                    self.update_users_no_signal(last_index)
-                    return
-            logger.debug('Browser: userid={}'.format(user_id))
-            try:
-                self.session_manager.session.switch_user(user_id, pin=pin)
-            except plexdevices.PlexTVError as e:
-                logger.error('Browser: ' + str(e))
-                msg_box(str(e))
-                self.update_users_no_signal(last_index)
+            return
+        pin = None
+        if user_auth:
+            text, ok = QInputDialog.getText(self, 'Switch User', 'PIN:',
+                                            QLineEdit.Password)
+            if ok:
+                pin = text
             else:
-                self.current_user = new_user
-                self.update_servers()
+                self.update_users_no_signal(last_index)
+                return
+        logger.debug('Browser: userid={}'.format(user_id))
+        try:
+            self.session_manager.session.switch_user(user_id, pin=pin)
+        except plexdevices.PlexTVError as e:
+            logger.error('Browser: ' + str(e))
+            msg_box(str(e))
+            self.update_users_no_signal(last_index)
+        else:
+            self.current_user = new_user
+            self.update_servers()
+
+    def destroy_remote(self, name):
+        for i, r in enumerate(self.remotes):
+            if r.name == name:
+                logger.debug('Browser: deleting remote ' + r.name)
+                del self.remotes[i]
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
@@ -353,6 +332,7 @@ class Browser(QMainWindow):
         self.mpvplayer.player_stopped.connect(self.ui.indicator.hide)
 
     def destroy_player(self):
+        logger.debug('Browser: deleting mpv player.')
         self.mpvplayer = None
 
     def create_photo_viewer(self):
@@ -360,19 +340,15 @@ class Browser(QMainWindow):
             self.image_viewer.close()
         self.image_viewer = PhotoViewer()
         self.image_viewer.closed.connect(self.destroy_photo_viewer)
-        self.image_viewer.next_button.connect(self.select_next)
-        self.image_viewer.prev_button.connect(self.select_prev)
+        self.image_viewer.next_button.connect(self.ui.list.next_item)
+        self.image_viewer.prev_button.connect(self.ui.list.prev_item)
         self.new_image_selection.connect(self.image_viewer.load_image)
 
     def destroy_photo_viewer(self):
+        logger.debug('Browser: deleting photo viewer.')
+        self.new_image_selection.disconnect()
         self.image_viewer.close()
         self.image_viewer = None
-
-    def select_next(self):
-        self.ui.list.next_item()
-
-    def select_prev(self):
-        self.ui.list.prev_item()
 
     def play_list_item(self, item):
         if self.mpvplayer is not None:
@@ -421,6 +397,59 @@ class Browser(QMainWindow):
         else:
             self.update_metadata_panel(None)
 
+    # Menu Actions #############################################################
+    def action_launch_remote(self):
+        sender = self.sender()
+        player = sender.data()
+        port = 8000 + len(self.remotes)
+        try:
+            logger.info('Browser: creating remote on port {}. player={}'.format(port, player))
+            remote = Remote(self.session_manager.session, player, port=port,
+                            name='pdremote-{}'.format(port))
+        except plexdevices.DeviceConnectionsError as e:
+            logger.error(str(e))
+            msg_box(str(e))
+        else:
+            self.remotes.append(remote)
+            remote.closed.connect(self.delete_remote)
+
+    def action_login(self):
+        d = LoginDialog(session=self.session_manager.session)
+        if d.exec_() == QDialog.Accepted:
+            self.session_manager.done.connect(self._action_login_cb)
+            self.ui.indicator.show()
+            username, password = d.data()
+            self.create_session.emit(username.strip(), password.strip())
+
+    def _action_login_cb(self):
+        self.session_manager.done.disconnect()
+        self.update_session_ui()
+        self.initialize(self.session_manager.server)
+        self.ui.indicator.hide()
+
+    def action_logout(self):
+        self.session_manager.delete_session()
+        self.update_session_ui()
+        self.ui.list.clear()
+
+    def action_manual_add_server(self):
+        d = ManualServerDialog()
+        if d.exec_() == QDialog.Accepted:
+            protocol, address, port, token = d.data()
+            self.session_manager.manual_add_server(protocol, address, port, token)
+            self.update_session_ui()
+
+    def action_reload_stylesheet(self):
+        app = QCoreApplication.instance()
+        with open('resources/plexdesktop.qss', 'r') as f:
+            app.setStyleSheet(f.read())
+
+    def action_trim_image_cache(self):
+        DB_IMAGE.remove(5)
+
+    def action_trim_thumb_cache(self):
+        DB_THUMB.remove(5)
+
     # Button slots #############################################################
     def back(self):
         if len(self.history) > 1:
@@ -454,11 +483,6 @@ class Browser(QMainWindow):
             self.ui.btn_metadata.setText("^")
 
     # UI Updates ###############################################################
-    def reload_stylesheet(self):
-        app = QCoreApplication.instance()
-        with open('resources/plexdesktop.qss', 'r') as f:
-            app.setStyleSheet(f.read())
-
     def update_servers(self):
         self.ui.servers.currentIndexChanged.disconnect()
         self.ui.servers.clear()
@@ -477,6 +501,7 @@ class Browser(QMainWindow):
                 self.ui.users.addItem(item['title'], i)
                 logger.debug('{} {}'.format(item['title'], item['id']))
         self.ui.users.currentIndexChanged.connect(self.change_user)
+        self.ui.users.setVisible(self.ui.users.count() > 0)
 
     def update_path(self, t1, t2):
         self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
@@ -515,9 +540,34 @@ class Browser(QMainWindow):
         self.ui.servers.setCurrentIndex(index)
         self.ui.servers.currentIndexChanged.connect(self.change_server)
 
+    def update_session_ui(self):
+        session = self.session_manager.session
+        server = self.session_manager.server
+        self.ui.menuRemotes.clear()
+        self.update_servers()
+        self.update_users()
+        try:
+            self.update_servers_no_signal(session.servers.index(server) if session is not None else 0)
+        except Exception as e:
+            logger.debug(e)
+        try:
+            self.update_users_no_signal(self.ui.users.findText(session.user))
+        except Exception as e:
+            logger.debug(str(e))
+        self.current_user = self.ui.users.currentText()
+
+        if session is not None:
+            for player in session.players:
+                action = QAction(str(player), self.ui.menuRemotes)
+                action.setData(player)
+                action.triggered.connect(self.action_launch_remote)
+                self.ui.menuRemotes.addAction(action)
+
     # QT Events ################################################################
     def closeEvent(self, event):
         self.ui.list.close()
+        self.worker_thread.quit()
+        self.worker_thread.wait()
 
     def mousePressEvent(self, event):
         if event.buttons() & Qt.BackButton:
@@ -535,102 +585,99 @@ class Browser(QMainWindow):
             if isinstance(item, (plexdevices.Movie, plexdevices.Episode,
                                  plexdevices.VideoClip, plexdevices.Track)):
                 main_action = QAction('Play', menu)
-                main_action.triggered.connect(self.action_play)
+                main_action.triggered.connect(self.cm_play)
                 actions.append(main_action)
                 if self.mpvplayer is not None and item.container.is_library:
                     append_action = QAction('Add to Queue', menu)
-                    append_action.triggered.connect(self.action_queue)
+                    append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)
             elif isinstance(item, plexdevices.Photo):
                 main_action = QAction('View Photo', menu)
-                main_action.triggered.connect(self.action_play_photo)
+                main_action.triggered.connect(self.cm_play_photo)
                 save_action = QAction('Save', menu)
-                save_action.triggered.connect(self.action_save_photo)
+                save_action.triggered.connect(self.cm_save_photo)
                 actions.append(main_action)
                 actions.append(save_action)
             copy_action = QAction('Copy url', menu)
-            copy_action.triggered.connect(self.action_copy)
+            copy_action.triggered.connect(self.cm_copy)
             actions.append(copy_action)
         elif isinstance(item, plexdevices.Directory):
             if isinstance(item, plexdevices.PreferencesDirectory):
                 main_action = QAction('Open', menu)
-                main_action.triggered.connect(self.action_settings)
+                main_action.triggered.connect(self.cm_settings)
                 actions.append(main_action)
             else:
                 main_action = QAction('Open', menu)
-                main_action.triggered.connect(self.action_open)
+                main_action.triggered.connect(self.cm_open)
                 actions.append(main_action)
             if isinstance(item, (plexdevices.Show, plexdevices.Season, plexdevices.Album, plexdevices.Artist)):
                 action = QAction('Play all', menu)
-                action.triggered.connect(self.action_play)
+                action.triggered.connect(self.cm_play)
                 actions.append(action)
                 if self.mpvplayer is not None and item.container.is_library:
                     append_action = QAction('Add to Queue', menu)
-                    append_action.triggered.connect(self.action_queue)
+                    append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)
 
         if item.markable:
             mark_action = QAction('Mark unwatched', menu)
-            mark_action.triggered.connect(self.action_mark_unwatched)
+            mark_action.triggered.connect(self.cm_mark_unwatched)
             mark_action2 = QAction('Mark watched', menu)
-            mark_action2.triggered.connect(self.action_mark_watched)
+            mark_action2.triggered.connect(self.cm_mark_watched)
             actions.append(mark_action)
             actions.append(mark_action2)
 
         if item.has_parent:
             open_action = QAction('goto: ' + plexdevices.get_type_string(item.parent_type), menu)
-            open_action.triggered.connect(self.action_open_parent)
+            open_action.triggered.connect(self.cm_open_parent)
             actions.append(open_action)
         if item.has_grandparent:
             open_action = QAction('goto: ' + plexdevices.get_type_string(item.grandparent_type), menu)
-            open_action.triggered.connect(self.action_open_grandparent)
+            open_action.triggered.connect(self.cm_open_grandparent)
             menu.addAction(open_action)
             actions.append(open_action)
 
         for action in actions:
+            action.setData(item)
             menu.addAction(action)
 
         if not menu.isEmpty():
             menu.exec_(QCursor.pos())
 
-    def action_queue(self):
-        item = self.ui.list.currentItem()
-        self.mpvplayer.playlist_queue_item(item)
+    def cm_queue(self):
+        self.mpvplayer.playlist_queue_item(self.sender().data())
 
-    def action_copy(self):
-        item = self.ui.list.currentItem()
-        url = item.resolve_url()
+    def cm_copy(self):
+        url = self.sender().data().resolve_url()
         clipboard = QApplication.clipboard()
         clipboard.setText(url)
 
-    def action_settings(self):
-        self.preferences_prompt(self.ui.list.currentItem())
+    def cm_settings(self):
+        self.preferences_prompt(self.sender().data())
 
-    def action_play(self):
-        self.play_list_item(self.ui.list.currentItem())
+    def cm_play(self):
+        self.play_list_item(self.sender().data())
 
-    def action_play_photo(self):
-        self.play_list_item_photo(self.ui.list.currentItem())
+    def cm_play_photo(self):
+        self.play_list_item_photo(self.sender().data())
 
-    def action_open(self):
-        self.data(media_object=self.ui.list.currentItem())
+    def cm_open(self):
+        self.data(media_object=self.sender().data())
 
-    def action_open_parent(self):
-        self.data(key=self.ui.list.currentItem().parent_key + '/children')
+    def cm_open_parent(self):
+        self.data(key=self.sender().data().parent_key + '/children')
 
-    def action_open_grandparent(self):
-        self.data(key=self.ui.list.currentItem().grandparent_key + '/children')
+    def cm_open_grandparent(self):
+        self.data(key=self.sender().data().grandparent_key + '/children')
 
-    def action_mark_watched(self):
-        item = self.ui.list.currentItem()
-        item.mark_watched()
+    def cm_mark_watched(self):
+        self.sender().data().mark_watched()
 
-    def action_mark_unwatched(self):
-        item = self.ui.list.currentItem()
-        item.mark_unwatched()
+    def cm_mark_unwatched(self):
+        self.sender().data().mark_unwatched()
 
-    def action_save_photo(self):
-        item = self.ui.list.currentItem()
+    def cm_save_photo(self):
+        item = self.sender().data()
         url = item.resolve_url()
         ext = url.split('?')[0].split('/')[-1].split('.')[-1]
         fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item.title]), ext)
