@@ -35,7 +35,7 @@ class SessionManager(QObject):
         try:
             self.session = pickle.loads(settings.value('session'))
         except Exception as e:
-            logger.error(str(e))
+            logger.error('SessionManager: load_session: ' + str(e))
 
     def save_session(self):
         settings = Settings()
@@ -43,7 +43,7 @@ class SessionManager(QObject):
             logger.info('SessionManager: saving session')
             settings.setValue('session', pickle.dumps(self.session))
         except Exception as e:
-            logger.error(str(e))
+            logger.error('SessionManager: save_session: ' + str(e))
 
     def find_server(self, identifier):
         try:
@@ -57,7 +57,7 @@ class SessionManager(QObject):
             logger.debug('SessionManager: creating session')
             self.session = plexdevices.Session(user=user, password=passwd)
         except plexdevices.PlexTVError as e:
-            logger.error(str(e))
+            logger.error('SessionManager: create_session: ' + str(e))
             self.updated_session.emit(False, str(e))
         else:
             self.refresh_devices()
@@ -74,7 +74,7 @@ class SessionManager(QObject):
             logger.info('SessionManager: refreshing devices')
             self.session.refresh_devices()
         except plexdevices.PlexTVError as e:
-            logger.error(str(e))
+            logger.error('SessionManager: refresh_devices: ' + str(e))
             self.updated_devices.emit(False, str(e))
         else:
             self.updated_devices.emit(True, '')
@@ -84,7 +84,7 @@ class SessionManager(QObject):
             logger.info('SessionManager: getting plex home users.')
             self.session.refresh_users()
         except Exception as e:
-            logger.error(str(e))
+            logger.error('SessionManager: refresh_users: ' + str(e))
             self.updated_users.emit(False, '')
         else:
             self.updated_users.emit(True, '')
@@ -111,7 +111,7 @@ class SessionManager(QObject):
             logger.info('SessionManager: changing user.')
             self.session.switch_user(userid, pin=pin)
         except plexdevices.PlexTVError as e:
-            logger.error(e)
+            logger.error('SessionManager: switch_user: ' + str(e))
             self.user_changed.emit(False, str(e))
         else:
             settings.setValue('user', userid)
