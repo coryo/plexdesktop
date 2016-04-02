@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QTimer
 from plexdesktop.ui.photo_viewer_ui import Ui_PhotoViewer
 from plexdesktop.settings import Settings
 from plexdesktop.sqlcache import DB_IMAGE
+import plexdevices
 logger = logging.getLogger('plexdesktop')
 
 
@@ -11,19 +12,15 @@ class ImgWorker(QObject):
     signal = pyqtSignal(bytes)
     finished = pyqtSignal()
 
-    def __init__(self, photo_object):
-        super(ImgWorker, self).__init__()
-        self.photo_object = photo_object
-
-    def run(self):
-        url, data = self.photo_object.media[0].parts[0].resolve_key(), None
+    def run(self, photo_object):
+        url, data = photo_object.media[0].parts[0].resolve_key(), None
         if isinstance(url, bytes):
             data = url
-            url = self.photo_object.media[0].parts[0].key
+            url = photo_object.media[0].parts[0].key
         logger.info('PhotoViewer: ' + url)
         img_data = DB_IMAGE[url]
         if img_data is None:
-            img_data = self.photo_object.container.server.image(url) if data is None else data
+            img_data = photo_object.container.server.image(url) if data is None else data
             DB_IMAGE[url] = img_data
         DB_IMAGE.commit()
         self.signal.emit(img_data)
@@ -31,7 +28,7 @@ class ImgWorker(QObject):
 
 
 class PhotoViewer(QWidget):
-    operate = pyqtSignal()
+    operate = pyqtSignal(plexdevices.BaseObject)
     closed = pyqtSignal()
     prev_button = pyqtSignal()
     next_button = pyqtSignal()
@@ -45,7 +42,12 @@ class PhotoViewer(QWidget):
 
         self.worker_thread = QThread()
         self.worker_thread.start()
-        self.worker = None
+        self.worker = ImgWorker()
+        self.worker.signal.connect(self.update_img)
+        self.worker.finished.connect(self.ui.indicator.hide)
+        self.worker.moveToThread(self.worker_thread)
+        self.operate.connect(self.worker.run)
+        self.operate.connect(self.ui.indicator.show)
 
         self.drag_position = None
         self.cur_img_data = None
@@ -76,13 +78,7 @@ class PhotoViewer(QWidget):
 
     def load_image(self, photo_object):
         self.setWindowTitle(photo_object.title)
-        self.worker = ImgWorker(photo_object)
-        self.worker.signal.connect(self.update_img)
-        self.worker.finished.connect(self.ui.indicator.hide)
-        self.worker.moveToThread(self.worker_thread)
-        self.operate.connect(self.worker.run)
-        self.operate.connect(self.ui.indicator.show)
-        self.operate.emit()
+        self.operate.emit(photo_object)
 
     def update_img(self, img_data):
         self.ui.image_label.new_image(img_data)
