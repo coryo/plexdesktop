@@ -490,6 +490,8 @@
     <addaction name="action_Logout"/>
     <addaction name="menuRemotes"/>
     <addaction name="actionAdd_Server"/>
+    <addaction name="actionRefresh_Devices"/>
+    <addaction name="actionRefresh_Users"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
     <property name="title">
@@ -551,6 +553,16 @@
   <action name="actionTrim_Thumb_Cache">
    <property name="text">
     <string>Trim Thumb Cache</string>
+   </property>
+  </action>
+  <action name="actionRefresh_Devices">
+   <property name="text">
+    <string>Refresh Devices...</string>
+   </property>
+  </action>
+  <action name="actionRefresh_Users">
+   <property name="text">
+    <string>Refresh Users...</string>
    </property>
   </action>
  </widget>

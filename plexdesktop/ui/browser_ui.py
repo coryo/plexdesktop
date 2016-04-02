@@ -245,6 +245,10 @@ class Ui_Browser(object):
         self.actionTrim_Image_Cache.setObjectName("actionTrim_Image_Cache")
         self.actionTrim_Thumb_Cache = QtWidgets.QAction(Browser)
         self.actionTrim_Thumb_Cache.setObjectName("actionTrim_Thumb_Cache")
+        self.actionRefresh_Devices = QtWidgets.QAction(Browser)
+        self.actionRefresh_Devices.setObjectName("actionRefresh_Devices")
+        self.actionRefresh_Users = QtWidgets.QAction(Browser)
+        self.actionRefresh_Users.setObjectName("actionRefresh_Users")
         self.menuFile.addAction(self.actionQuit)
         self.menuEdit.addAction(self.actionPreferences)
         self.menuEdit.addAction(self.action_Reload_Stylesheet)
@@ -256,6 +260,8 @@ class Ui_Browser(object):
         self.menuSession.addAction(self.action_Logout)
         self.menuSession.addAction(self.menuRemotes.menuAction())
         self.menuSession.addAction(self.actionAdd_Server)
+        self.menuSession.addAction(self.actionRefresh_Devices)
+        self.menuSession.addAction(self.actionRefresh_Users)
         self.menu_Help.addAction(self.actionAbout)
         self.menubar.addAction(self.menuFile.menuAction())
         self.menubar.addAction(self.menuEdit.menuAction())
@@ -292,5 +298,7 @@ class Ui_Browser(object):
         self.actionAdd_Server.setText(_translate("Browser", "Add Server..."))
         self.actionTrim_Image_Cache.setText(_translate("Browser", "Trim Image Cache"))
         self.actionTrim_Thumb_Cache.setText(_translate("Browser", "Trim Thumb Cache"))
+        self.actionRefresh_Devices.setText(_translate("Browser", "Refresh Devices..."))
+        self.actionRefresh_Users.setText(_translate("Browser", "Refresh Users..."))
 
 from plexdesktop.browserlist import ListView
