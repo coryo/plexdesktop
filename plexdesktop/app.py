@@ -57,7 +57,10 @@ def run():
     }
     dictConfig(logging_config)
     logger = logging.getLogger('plexdesktop')
-    logger.handlers[0].doRollover()
+    try:
+        logger.handlers[0].doRollover()
+    except Exception:
+        pass
     logger.info("Application Started")
     app = QApplication(sys.argv)
     with open('resources/plexdesktop.qss', 'r') as stylesheet:
