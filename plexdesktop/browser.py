@@ -1,5 +1,6 @@
 import logging
 import os
+from threading import Thread
 from PyQt5.QtWidgets import (QDialog, QMainWindow, QAction, QMenu, QInputDialog,
                              QFileDialog, QApplication, QLineEdit)
 from PyQt5.QtCore import pyqtSignal, Qt, QCoreApplication, QThread
@@ -339,15 +340,6 @@ class Browser(QMainWindow):
             username, password = d.data()
             self.create_session.emit(username.strip(), password.strip())
 
-    # def _action_login_cb(self, success, message):
-    #     self.session_manager.updated_session.disconnect()
-    #     self.ui.indicator.hide()
-    #     if success:
-    #         self.ui_update_session()
-    #         self.initialize(self.session_manager.server)
-    #     else:
-    #         msg_box(message)
-
     def action_logout(self):
         self.session_manager.delete_session()
         self.ui_update_session()
@@ -621,8 +613,12 @@ class Browser(QMainWindow):
         save_file, filtr = QFileDialog.getSaveFileName(self, 'Open Directory',
                                                        fname,
                                                        'Images (*.{})'.format(ext))
-        if not save_file:
-            return
+        if save_file:
+            self.ui.indicator.show()
+            t = Thread(target=self.write_image, args=(item, url, save_file))
+            t.start()
+
+    def write_image(self, item, url, file):
         try:
             data = DB_IMAGE[url]
             if data is None:
@@ -630,8 +626,10 @@ class Browser(QMainWindow):
                 data = item.container.server.image(url)
             else:
                 logger.debug('Browser: save_photo: image was in the cache')
-        except Exception:
-            return
-        with open(os.path.abspath(save_file), 'wb') as f:
-            logger.info('Browser: save_photo: writing to: {}'.format(save_file))
-            f.write(data)
+        except Exception as e:
+            logger.debug(e)
+        else:
+            with open(os.path.abspath(file), 'wb') as f:
+                logger.info('Browser: save_photo: writing to: {}'.format(file))
+                f.write(data)
+        self.ui.indicator.hide()
