@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_PhotoViewer(object):
     def setupUi(self, PhotoViewer):
         PhotoViewer.setObjectName("PhotoViewer")
-        PhotoViewer.resize(466, 404)
+        PhotoViewer.resize(467, 404)
         PhotoViewer.setStyleSheet("")
         self.verticalLayout = QtWidgets.QVBoxLayout(PhotoViewer)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -35,6 +35,12 @@ class Ui_PhotoViewer(object):
         self.btn_next = QtWidgets.QPushButton(self.control_bar)
         self.btn_next.setObjectName("btn_next")
         self.horizontalLayout.addWidget(self.btn_next)
+        self.btn_rotate_ccw = QtWidgets.QPushButton(self.control_bar)
+        self.btn_rotate_ccw.setObjectName("btn_rotate_ccw")
+        self.horizontalLayout.addWidget(self.btn_rotate_ccw)
+        self.btn_rotate_cw = QtWidgets.QPushButton(self.control_bar)
+        self.btn_rotate_cw.setObjectName("btn_rotate_cw")
+        self.horizontalLayout.addWidget(self.btn_rotate_cw)
         self.btn_refresh = QtWidgets.QPushButton(self.control_bar)
         self.btn_refresh.setObjectName("btn_refresh")
         self.horizontalLayout.addWidget(self.btn_refresh)
@@ -72,6 +78,7 @@ class Ui_PhotoViewer(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.image_label.sizePolicy().hasHeightForWidth())
         self.image_label.setSizePolicy(sizePolicy)
+        self.image_label.setText("")
         self.image_label.setAlignment(QtCore.Qt.AlignCenter)
         self.image_label.setObjectName("image_label")
         self.viewer.addWidget(self.image_label)
@@ -85,7 +92,8 @@ class Ui_PhotoViewer(object):
         PhotoViewer.setWindowTitle(_translate("PhotoViewer", "Form"))
         self.btn_prev.setText(_translate("PhotoViewer", "<"))
         self.btn_next.setText(_translate("PhotoViewer", ">"))
+        self.btn_rotate_ccw.setText(_translate("PhotoViewer", "< 90°"))
+        self.btn_rotate_cw.setText(_translate("PhotoViewer", "90° >"))
         self.btn_refresh.setText(_translate("PhotoViewer", "refresh"))
-        self.image_label.setText(_translate("PhotoViewer", "TextLabel"))
 
 from plexdesktop.extra_widgets import AspectRatioLabel

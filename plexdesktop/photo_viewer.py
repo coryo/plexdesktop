@@ -1,7 +1,6 @@
 import logging
-from PyQt5.QtWidgets import QWidget, QLabel, QSizePolicy, QScrollArea
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QPoint, QSize, QBuffer, QIODevice, QTimer
-from PyQt5.QtGui import QPalette, QPixmap, QGuiApplication, QImageReader
+from PyQt5.QtWidgets import QWidget
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QTimer
 from plexdesktop.ui.photo_viewer_ui import Ui_PhotoViewer
 from plexdesktop.settings import Settings
 from plexdesktop.sqlcache import DB_IMAGE
@@ -57,7 +56,9 @@ class PhotoViewer(QWidget):
 
         self.ui.btn_prev.pressed.connect(self.prev)
         self.ui.btn_next.pressed.connect(self.next)
-        self.ui.btn_refresh.pressed.connect(self.ui.image_label.refresh)
+        self.ui.btn_refresh.pressed.connect(self.ui.image_label.rotate_default)
+        self.ui.btn_rotate_cw.pressed.connect(self.ui.image_label.rotate_cw)
+        self.ui.btn_rotate_ccw.pressed.connect(self.ui.image_label.rotate_ccw)
 
     def sizeHint(self):
         return QSize(1280, 720)
@@ -84,7 +85,7 @@ class PhotoViewer(QWidget):
         self.operate.emit()
 
     def update_img(self, img_data):
-        self.ui.image_label.set_pixmap_from_data(img_data)
+        self.ui.image_label.new_image(img_data)
         self.ui.image_label.adjustSize()
 
     def mousePressEvent(self, event):

@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
                              QCheckBox, QComboBox, QLineEdit)
 from PyQt5.QtCore import Qt, QSize, QBuffer
-from PyQt5.QtGui import QPixmap, QImageReader
+from PyQt5.QtGui import QPixmap, QImageReader, QTransform
 
 
 class AspectRatioLabel(QLabel):
@@ -12,6 +12,11 @@ class AspectRatioLabel(QLabel):
         self.pix = QPixmap()
         self.img_data = None
         self.reader = QImageReader()
+        self.transform = QTransform()
+
+    def new_image(self, data):
+        self.transform = QTransform()
+        self.set_pixmap_from_data(data)
 
     def set_pixmap_from_data(self, data):
         self.img_data = data
@@ -20,9 +25,24 @@ class AspectRatioLabel(QLabel):
         self.reader.setDevice(buf)
         self.update_image()
 
+    def rotate_default(self):
+        self.transform = QTransform()
+        self.refresh()
+
+    def rotate_cw(self):
+        self.rotate(90)
+
+    def rotate_ccw(self):
+        self.rotate(-90)
+
+    def rotate(self, angle):
+        self.transform.rotate(angle)
+        self.refresh()
+
     def update_image(self):
         self.reader.setScaledSize(self.reader.size().scaled(self.size(), Qt.KeepAspectRatio))
-        self.setPixmap(QPixmap.fromImage(self.reader.read()))
+        pic = QPixmap.fromImage(self.reader.read())
+        self.setPixmap(pic.transformed(self.transform))
 
     def new_height(self, original_size, new_width):
         return (original_size.height() / original_size.width()) * new_width

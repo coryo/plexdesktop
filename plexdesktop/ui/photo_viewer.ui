@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>466</width>
+    <width>467</width>
     <height>404</height>
    </rect>
   </property>
@@ -67,6 +67,20 @@
        <widget class="QPushButton" name="btn_next">
         <property name="text">
          <string>&gt;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_rotate_ccw">
+        <property name="text">
+         <string>&lt; 90°</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_rotate_cw">
+        <property name="text">
+         <string>90° &gt;</string>
         </property>
        </widget>
       </item>
@@ -157,7 +171,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>TextLabel</string>
+         <string/>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>
