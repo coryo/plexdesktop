@@ -20,6 +20,32 @@ import plexdevices
 logger = logging.getLogger('plexdesktop')
 
 
+class Location(object):
+    def __init__(self, key, sort=0, params=None):
+        self.key = key
+        self.sort = sort
+        self.params = params
+
+    def tuple(self):
+        return (self.key, self.sort, self.params)
+
+    @staticmethod
+    def home():
+        return Location('/library/sections')
+
+    @staticmethod
+    def on_deck():
+        return Location('/library/onDeck')
+
+    @staticmethod
+    def recently_added():
+        return Location('/library/recentlyAdded')
+
+    @staticmethod
+    def channels():
+        return Location('/channels/all')
+
+
 class Browser(QMainWindow):
     new_image_selection = pyqtSignal(plexdevices.BaseObject)
     new_metadata_selection = pyqtSignal(plexdevices.BaseObject)
@@ -27,6 +53,7 @@ class Browser(QMainWindow):
     refresh_devices = pyqtSignal()
     refresh_users = pyqtSignal()
     change_user = pyqtSignal(str, str)
+    manual_add_server = pyqtSignal(str, str, str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -37,16 +64,20 @@ class Browser(QMainWindow):
         self.ui.statusbar.hide()
 
         self.session_manager = SessionManager()
-        self.session_manager.load_session()
+
         self.worker_thread = QThread()
         self.session_manager.moveToThread(self.worker_thread)
+        self.session_manager.active.connect(self.ui.actionLogout.setEnabled)
+        self.session_manager.active.connect(self.ui.actionRefresh_Devices.setEnabled)
+        self.session_manager.active.connect(self.ui.actionRefresh_Users.setEnabled)
+        self.session_manager.active.connect(self.ui.menuRemotes.setEnabled)
+        self.session_manager.active.connect(self.ui.actionInfo.setEnabled)
         self.create_session.connect(self.session_manager.create_session)
         self.refresh_devices.connect(self.session_manager.refresh_devices)
         self.refresh_users.connect(self.session_manager.refresh_users)
         self.change_user.connect(self.session_manager.switch_user)
-        self.session_manager.updated_devices.connect(self._session_manager_cb)
-        self.session_manager.updated_users.connect(self._session_manager_cb)
-        self.session_manager.user_changed.connect(self._session_manager_cb)
+        self.manual_add_server.connect(self.session_manager.manual_add_server)
+        self.session_manager.done.connect(self._session_manager_cb)
         self.worker_thread.start()
 
         self.remotes = []
@@ -61,8 +92,8 @@ class Browser(QMainWindow):
         # Menu
         self.ui.actionQuit.triggered.connect(self.close)
         self.ui.actionLogin_Refresh.triggered.connect(self.action_login)
-        self.ui.action_Logout.triggered.connect(self.action_logout)
-        self.ui.action_Reload_Stylesheet.triggered.connect(self.action_reload_stylesheet)
+        self.ui.actionLogout.triggered.connect(self.action_logout)
+        self.ui.actionReload_Stylesheet.triggered.connect(self.action_reload_stylesheet)
         self.ui.actionAdd_Server.triggered.connect(self.action_manual_add_server)
         self.ui.actionTrim_Image_Cache.triggered.connect(self.action_trim_image_cache)
         self.ui.actionTrim_Thumb_Cache.triggered.connect(self.action_trim_thumb_cache)
@@ -105,8 +136,9 @@ class Browser(QMainWindow):
 
         self.new_metadata_selection.connect(self.ui_update_metadata_panel)
 
+        self.session_manager.load_session()
+
         self.ui_update_session()
-        self.initialize(self.session_manager.server)
 
         self.show()
 
@@ -116,44 +148,41 @@ class Browser(QMainWindow):
             return
         logger.info('Browser: initializing browser on server={}'.format(server))
         self.session_manager.switch_server(server)
-
-        self.location = ('/library/sections', 0, None)
+        self.location = Location.home()
         self.history = [self.location]
         self.shortcuts = {}
-
         self.load_shortcuts()
+        self.ui_update_title()
         try:
-            self.data(key=self.location[0])
+            self.goto_location(self.location)
         except Exception as e:
             logger.error('Browser: initialize: ' + str(e))
         else:
             self.initialized = True
 
-    def data(self, media_object=None, key=None, history=True, sort=0, params=None):
-        if self.session_manager.session is None:
-            return
-        key = key if media_object is None else media_object.key
-        if not key.startswith('/'):
-            key = self.location[0] + '/' + key
-        logger.info('Browser: key=' + key)
+    def goto_location(self, location, history=True):
+        if not location.key.startswith('/'):
+            location.key = self.location.key + '/' + location.key
+        logger.info('Browser: key=' + location.key)
 
-        self.ui_update_sort_no_signal(sort)
-        self.ui.sort.setEnabled(key.startswith('/library'))
+        self.ui_update_sort_no_signal(location.sort)
+        self.ui.sort.setEnabled(location.key.startswith('/library'))
 
-        self.location = (key, sort, params)
-        self.ui.list.add_container(self.session_manager.server, key, 0, self.container_size,
-                                   self.ui.sort.itemData(sort), params)
+        self.location = location
+        self.ui.list.add_container(self.session_manager.server, location.key, 0,
+                                   self.container_size,
+                                   self.ui.sort.itemData(location.sort), location.params)
 
         self.toggle_shortcut_button()
 
         if history and self.history[-1] != self.location:
-            if self.history[-1][0] == key:
+            if self.history[-1].key == location.key:
                 self.history.pop()
             self.history.append(self.location)
 
     def toggle_shortcut_button(self):
         self.ui.btn_add_shortcut.disconnect()
-        if self.location in self.shortcuts.values():
+        if self.location.tuple() in self.shortcuts.values():
             self.ui.btn_add_shortcut.setText('- shortcut')
             self.ui.btn_add_shortcut.pressed.connect(self.remove_shortcut)
         else:
@@ -162,7 +191,7 @@ class Browser(QMainWindow):
 
     def remove_shortcut(self):
         try:
-            k = [x for x in self.shortcuts if self.shortcuts[x] == self.location][0]
+            k = [x for x in self.shortcuts if self.shortcuts[x] == self.location.key][0]
         except Exception:
             logger.debug('failed to remove shortcut')
         else:
@@ -179,7 +208,7 @@ class Browser(QMainWindow):
     def action_add_shortcut(self):
         name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
         if ok:
-            self.shortcuts[name] = self.location
+            self.shortcuts[name] = self.location.tuple()
             logger.debug(self.shortcuts)
             self.save_shortcuts()
             self.load_shortcuts()
@@ -201,8 +230,8 @@ class Browser(QMainWindow):
         i = self.ui.shortcuts.currentText()
         logger.debug(self.shortcuts)
         logger.debug(i)
-        key, sort, params = self.shortcuts[i]
-        self.data(key=key, sort=sort, params=params)
+        loc = Location(*self.shortcuts[i])
+        self.goto_location(loc)
 
     def action_change_server(self, index):
         try:
@@ -241,6 +270,7 @@ class Browser(QMainWindow):
             if r.name == name:
                 logger.debug('Browser: deleting remote ' + r.name)
                 del self.remotes[i]
+                return
 
     def create_player(self):
         self.mpvplayer = MPVPlayer()
@@ -286,7 +316,7 @@ class Browser(QMainWindow):
     def search_prompt(self, item):
         text, ok = QInputDialog.getText(self, 'Search', 'query:')
         if ok:
-            self.data(media_object=item, params={'query': text})
+            self.goto_location(Location(item.key, params={'query': text}))
 
     def item_double_clicked(self, item):
         if isinstance(item, plexdevices.Directory):
@@ -295,7 +325,7 @@ class Browser(QMainWindow):
             elif isinstance(item, plexdevices.PreferencesDirectory):
                 self.preferences_prompt(item)
             else:
-                self.data(media_object=item)
+                self.goto_location(Location(item.key))
         elif isinstance(item, plexdevices.MediaItem):
             if isinstance(item, (plexdevices.Movie, plexdevices.Episode,
                                  plexdevices.VideoClip, plexdevices.Track)):
@@ -335,7 +365,6 @@ class Browser(QMainWindow):
         d = LoginDialog(session=self.session_manager.session)
         if d.exec_() == QDialog.Accepted:
             self.initialized = False
-            self.session_manager.updated_session.connect(self._session_manager_cb)
             self.ui.indicator.show()
             username, password = d.data()
             self.create_session.emit(username.strip(), password.strip())
@@ -350,13 +379,16 @@ class Browser(QMainWindow):
         d = ManualServerDialog()
         if d.exec_() == QDialog.Accepted:
             protocol, address, port, token = d.data()
-            self.session_manager.manual_add_server(protocol, address, port, token)
-            self.ui_update_session()
+            self.ui.indicator.show()
+            self.manual_add_server.emit(protocol, address, port, token)
 
     def action_reload_stylesheet(self):
         app = QCoreApplication.instance()
-        with open('resources/plexdesktop.qss', 'r') as f:
-            app.setStyleSheet(f.read())
+        try:
+            with open('resources/plexdesktop.qss', 'r') as f:
+                app.setStyleSheet(f.read())
+        except EnvironmentError as e:
+            logger.error('Browser: reload_stylesheet: ' + str(e))
 
     def action_trim_image_cache(self):
         DB_IMAGE.remove(5)
@@ -382,52 +414,45 @@ class Browser(QMainWindow):
     def back(self):
         if len(self.history) > 1:
             self.history.pop()
-            key, sort, params = self.history[-1]
-            self.data(key=key, sort=sort, params=params, history=False)
+            self.goto_location(self.history[-1], history=False)
 
     def reload(self):
-        key, sort, params = self.location
-        self.data(key=key, sort=self.ui.sort.currentIndex(), params=params)
+        self.goto_location(self.location)
 
     def home(self):
-        self.history = [('/library/sections', 0, {})]
-        self.data(key='/library/sections')
+        self.history = [Location.home()]
+        self.goto_location(self.history[0])
 
     def on_deck(self):
-        self.data(key='/library/onDeck')
+        self.goto_location(Location.on_deck())
 
     def recently_added(self):
-        self.data(key='/library/recentlyAdded')
+        self.goto_location(Location.recently_added())
 
     def channels(self):
-        self.data(key='/channels/all')
+        self.goto_location(Location.channels())
 
     def toggle_metadata_panel(self):
-        if self.ui.metadata_panel.isVisible():
-            self.ui.metadata_panel.hide()
-            self.ui.btn_metadata.setText("v")
-        else:
-            self.ui.metadata_panel.show()
-            self.ui.btn_metadata.setText("^")
+        self.ui.metadata_panel.setVisible(not self.ui.metadata_panel.isVisible())
+        self.ui.btn_metadata.setText('v' if self.ui.btn_metadata.text() == '^' else '^')
 
     # UI Updates ###############################################################
     def ui_update_servers(self):
         self.ui.servers.currentIndexChanged.disconnect()
         self.ui.servers.clear()
         session = self.session_manager.session
-        if session is not None:
-            for i, item in enumerate(session.servers):
-                self.ui.servers.addItem('{} - {}'.format(item.name, item.product), i)
+        for server in session.servers:
+            self.ui.servers.addItem('{} - {}'.format(server.name, server.product),
+                                    server.client_identifier)
         self.ui.servers.currentIndexChanged.connect(self.action_change_server)
 
     def ui_update_users(self):
         self.ui.users.currentIndexChanged.disconnect()
         self.ui.users.clear()
         session = self.session_manager.session
-        if session is not None:
-            for i, item in enumerate(session.users):
-                self.ui.users.addItem(item['title'], item['id'])
-                logger.debug('{} {}'.format(item['title'], item['id']))
+        for user in session.users:
+            self.ui.users.addItem(user['title'], user['id'])
+            logger.debug('{} {}'.format(user['title'], user['id']))
         self.ui.users.currentIndexChanged.connect(self.action_change_user)
         self.ui.users.setVisible(self.ui.users.count() > 0)
 
@@ -435,22 +460,23 @@ class Browser(QMainWindow):
         self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
 
     def ui_update_title(self):
-        self.setWindowTitle('{}: {}'.format(self.session_manager.server.name, self.location[0]))
+        self.setWindowTitle('plexdesktop - ' + self.session_manager.server.name)
 
     def ui_update_metadata_panel(self, media_object):
-        if media_object is None:
-            self.ui.lbl_metadata.clear()
-            return
-        elements = ['title', 'summary', 'year', 'duration', 'rating', 'viewOffset']
-        data = {k: v for k, v in media_object.data.items() if k in elements}
+        elements = ['title', 'summary', 'year', 'duration', 'rating', 'view_offset']
+        data = {x: getattr(media_object, x) for x in elements if hasattr(media_object, x)}
         if 'duration' in data:
-            d = timestamp_from_ms(int(data['duration']))
-            if 'viewOffset' in data:
-                vo = timestamp_from_ms(int(data['viewOffset']))
-                d = vo + " / " + d
-                del data['viewOffset']
-            data['duration'] = d
-        txt = ["{}: {}".format(k, v) for k, v in data.items()]
+            if data['duration'] > 0:
+                data['duration'] = timestamp_from_ms(int(data['duration']))
+                if data['view_offset'] > 0:
+                    data['duration'] = (timestamp_from_ms(data['view_offset']) +
+                                        ' / ' + data['duration'])
+            else:
+                del data['duration']
+            del data['view_offset']
+        if 'year' in data and not data['year']:
+            del data['year']
+        txt = ['{}: {}'.format(k, str(v)) for k, v in sorted(data.items())]
         self.ui.lbl_metadata.setText('\n'.join(txt))
 
     def ui_update_sort_no_signal(self, index):
@@ -475,17 +501,20 @@ class Browser(QMainWindow):
         self.ui_update_servers()
         self.ui_update_users()
         try:
-            self.ui_update_servers_no_signal(session.servers.index(server) if session is not None else 0)
+            self.ui_update_servers_no_signal(session.servers.index(server))
         except Exception as e:
-            logger.debug(e)
-        self.ui_update_users_no_signal(self.ui.users.findData(self.session_manager.user))
+            logger.error('Browser: no servers. ' + str(e))
 
-        if session is not None:
-            for player in session.players:
-                action = QAction(str(player), self.ui.menuRemotes)
-                action.setData(player)
-                action.triggered.connect(self.action_launch_remote)
-                self.ui.menuRemotes.addAction(action)
+        try:
+            self.ui_update_users_no_signal(self.ui.users.findData(self.session_manager.user))
+        except Exception as e:
+            logger.error('Browser: no users. ' + str(e))
+
+        for player in session.players:
+            action = QAction(str(player), self.ui.menuRemotes)
+            action.setData(player)
+            action.triggered.connect(self.action_launch_remote)
+            self.ui.menuRemotes.addAction(action)
 
         if not self.initialized:
             self.initialize(self.session_manager.server)
@@ -537,7 +566,8 @@ class Browser(QMainWindow):
                 main_action = QAction('Open', menu)
                 main_action.triggered.connect(self.cm_open)
                 actions.append(main_action)
-            if isinstance(item, (plexdevices.Show, plexdevices.Season, plexdevices.Album, plexdevices.Artist)):
+            if isinstance(item, (plexdevices.Show, plexdevices.Season,
+                                 plexdevices.Album, plexdevices.Artist)):
                 action = QAction('Play all', menu)
                 action.triggered.connect(self.cm_play)
                 actions.append(action)
@@ -576,8 +606,7 @@ class Browser(QMainWindow):
 
     def cm_copy(self):
         url = self.sender().data().resolve_url()
-        clipboard = QApplication.clipboard()
-        clipboard.setText(url)
+        QApplication.clipboard().setText(url)
 
     def cm_settings(self):
         self.preferences_prompt(self.sender().data())
@@ -589,13 +618,13 @@ class Browser(QMainWindow):
         self.play_list_item_photo(self.sender().data())
 
     def cm_open(self):
-        self.data(media_object=self.sender().data())
+        self.goto_location(Location(self.sender().data().key))
 
     def cm_open_parent(self):
-        self.data(key=self.sender().data().parent_key + '/children')
+        self.goto_location(Location(self.sender().data().parent_key + '/children'))
 
     def cm_open_grandparent(self):
-        self.data(key=self.sender().data().grandparent_key + '/children')
+        self.goto_location(Location(self.sender().data().grandparent_key + '/children'))
 
     def cm_mark_watched(self):
         self.sender().data().mark_watched()
@@ -622,14 +651,14 @@ class Browser(QMainWindow):
         try:
             data = DB_IMAGE[url]
             if data is None:
-                logger.debug('Browser: save_photo: downloading image')
+                logger.debug('Browser: write_image: downloading image')
                 data = item.container.server.image(url)
             else:
-                logger.debug('Browser: save_photo: image was in the cache')
+                logger.debug('Browser: write_image: image was in the cache')
         except Exception as e:
-            logger.debug(e)
+            logger.error('Browser: write_image: ' + str(e))
         else:
             with open(os.path.abspath(file), 'wb') as f:
-                logger.info('Browser: save_photo: writing to: {}'.format(file))
+                logger.info('Browser: write_image: writing to: {}'.format(file))
                 f.write(data)
         self.ui.indicator.hide()

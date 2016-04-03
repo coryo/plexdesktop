@@ -471,7 +471,7 @@
      <string>&amp;Edit</string>
     </property>
     <addaction name="actionPreferences"/>
-    <addaction name="action_Reload_Stylesheet"/>
+    <addaction name="actionReload_Stylesheet"/>
     <addaction name="actionTrim_Image_Cache"/>
     <addaction name="actionTrim_Thumb_Cache"/>
    </widget>
@@ -486,8 +486,8 @@
      <addaction name="separator"/>
     </widget>
     <addaction name="actionLogin_Refresh"/>
-    <addaction name="action_Info"/>
-    <addaction name="action_Logout"/>
+    <addaction name="actionInfo"/>
+    <addaction name="actionLogout"/>
     <addaction name="menuRemotes"/>
     <addaction name="actionAdd_Server"/>
     <addaction name="actionRefresh_Devices"/>
@@ -511,6 +511,9 @@
    </property>
   </action>
   <action name="actionLogin_Refresh">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>&amp;Login/Refresh...</string>
    </property>
@@ -520,12 +523,15 @@
     <string>&amp;Quit</string>
    </property>
   </action>
-  <action name="action_Info">
+  <action name="actionInfo">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>&amp;Info</string>
    </property>
   </action>
-  <action name="action_Logout">
+  <action name="actionLogout">
    <property name="text">
     <string>Log&amp;out</string>
    </property>
@@ -535,7 +541,7 @@
     <string>&amp;About</string>
    </property>
   </action>
-  <action name="action_Reload_Stylesheet">
+  <action name="actionReload_Stylesheet">
    <property name="text">
     <string>&amp;Reload Stylesheet</string>
    </property>

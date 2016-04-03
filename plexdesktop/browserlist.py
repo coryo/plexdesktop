@@ -378,10 +378,10 @@ class ThumbWorker(QObject):
     def do_work(self, media_object, row):
         if not self.work:
             return
-        self.media_object = media_object
         url = media_object.thumb
         if url is None:
             return
+        self.media_object = media_object
         key = media_object.container.server.client_identifier + url
         key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
         img = QPixmapCache.find(key_hash)
