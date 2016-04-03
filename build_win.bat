@@ -9,6 +9,7 @@ del release\*.obj
 del release\*.cpp
 del release\*.exp
 del release\*.lib
+del release\*.res
 cd ..
 mkdir build\release\resources
 xcopy resources build\release\resources
