@@ -8,10 +8,8 @@ logger = logging.getLogger('plexdesktop')
 
 
 class SessionManager(QObject):
-    updated_session = pyqtSignal(bool, str)
-    updated_devices = pyqtSignal(bool, str)
-    updated_users = pyqtSignal(bool, str)
-    user_changed = pyqtSignal(bool, str)
+    done = pyqtSignal(bool, str)
+    active = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -34,8 +32,10 @@ class SessionManager(QObject):
         settings = Settings()
         try:
             self.session = pickle.loads(settings.value('session'))
+            self.active.emit(True)
         except Exception as e:
             logger.error('SessionManager: load_session: ' + str(e))
+            self.active.emit(False)
 
     def save_session(self):
         settings = Settings()
@@ -58,7 +58,7 @@ class SessionManager(QObject):
             self.session = plexdevices.Session(user=user, password=passwd)
         except plexdevices.PlexTVError as e:
             logger.error('SessionManager: create_session: ' + str(e))
-            self.updated_session.emit(False, str(e))
+            self.done.emit(False, str(e))
         else:
             self.refresh_devices()
             self.refresh_users()
@@ -67,7 +67,8 @@ class SessionManager(QObject):
                     settings.setValue('user', user['id'])
                     break
             self.save_session()
-            self.updated_session.emit(True, '')
+            self.active.emit(True)
+            self.done.emit(True, '')
 
     def refresh_devices(self):
         try:
@@ -75,9 +76,9 @@ class SessionManager(QObject):
             self.session.refresh_devices()
         except plexdevices.PlexTVError as e:
             logger.error('SessionManager: refresh_devices: ' + str(e))
-            self.updated_devices.emit(False, str(e))
+            self.done.emit(False, str(e))
         else:
-            self.updated_devices.emit(True, '')
+            self.done.emit(True, '')
 
     def refresh_users(self):
         try:
@@ -85,9 +86,9 @@ class SessionManager(QObject):
             self.session.refresh_users()
         except Exception as e:
             logger.error('SessionManager: refresh_users: ' + str(e))
-            self.updated_users.emit(False, '')
+            self.done.emit(False, '')
         else:
-            self.updated_users.emit(True, '')
+            self.done.emit(True, '')
 
     def delete_session(self):
         settings = Settings()
@@ -95,6 +96,7 @@ class SessionManager(QObject):
         settings.remove('user')
         settings.remove('last_server')
         self.session = plexdevices.Session()
+        self.active.emit(False)
 
     def switch_server(self, server):
         settings = Settings()
@@ -102,8 +104,13 @@ class SessionManager(QObject):
 
     def manual_add_server(self, protocol, address, port, token):
         logger.debug('{}, {}, {}, {}'.format(protocol, address, port, token))
-        self.session.manual_add_server(address, port, protocol, token)
-        self.save_session()
+        try:
+            self.session.manual_add_server(address, port, protocol, token)
+        except ConnectionError as e:
+            self.done.emit(False, str(e))
+        else:
+            self.save_session()
+            self.done.emit(True, '')
 
     def switch_user(self, userid, pin=None):
         settings = Settings()
@@ -112,8 +119,8 @@ class SessionManager(QObject):
             self.session.switch_user(userid, pin=pin)
         except plexdevices.PlexTVError as e:
             logger.error('SessionManager: switch_user: ' + str(e))
-            self.user_changed.emit(False, str(e))
+            self.done.emit(False, str(e))
         else:
             settings.setValue('user', userid)
             self.save_session()
-            self.user_changed.emit(True, '')
+            self.done.emit(True, '')
