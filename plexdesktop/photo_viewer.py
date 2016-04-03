@@ -13,14 +13,11 @@ class ImgWorker(QObject):
     finished = pyqtSignal()
 
     def run(self, photo_object):
-        url, data = photo_object.media[0].parts[0].resolve_key(), None
-        if isinstance(url, bytes):
-            data = url
-            url = photo_object.media[0].parts[0].key
+        url = photo_object.media[0].parts[0].resolve_key()
         logger.info('PhotoViewer: ' + url)
         img_data = DB_IMAGE[url]
         if img_data is None:
-            img_data = photo_object.container.server.image(url) if data is None else data
+            img_data = photo_object.container.server.image(url)
             DB_IMAGE[url] = img_data
         DB_IMAGE.commit()
         self.signal.emit(img_data)
