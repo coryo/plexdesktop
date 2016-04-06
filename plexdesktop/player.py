@@ -119,16 +119,15 @@ class MPVPlayer(QWidget):
         self.mouse_moved.connect(self.cursor_timer.start)
 
         self.settings = Settings()
-        self.last_volume = self.settings.value('last_volume', 0.0)
         self.drag_position = None
-        self._playback_time_count = 0
+        self._playback_time_count = 500
         self.play_queue = None
         self.current_item = None
         self.next_item = None
         self.resized = False
 
         try:
-            self.mpv.volume = self.last_volume
+            self.mpv.volume = self.settings.value('last_volume', 0.0)
         except Exception:
             pass
 
@@ -220,22 +219,12 @@ class MPVPlayer(QWidget):
             self._event_handlers[eventid](event)
 
     def do_file_loaded(self, event):
-        logger.info(event)
-        try:
-            video_params = self.mpv.video_params
-            if not self.resized:
-                self.resized = True
-                self.resize(QSize(video_params['w'], video_params['h'] + self.ui.control_bar.height()))
-        except Exception:
-            pass
         if self.current_item.in_progress and self.current_item.view_offset > 0:
             self.mpv.seek(self.current_item.view_offset // 1000, 'absolute')
-        self.do_timeline_update(state='playing')
         self.playback_started.emit()
 
     def do_end_file(self, event):
         logger.debug('Player: do_end_file')
-        # self.do_timeline_update(state='stopped')
         item = (self.play_queue.get_next() if self.next_item is None else
                 self.play_queue.select(self.next_item))
         if item is not None:
@@ -247,8 +236,8 @@ class MPVPlayer(QWidget):
 
     def do_log_message(self, event):
         try:
-            level = mpv_to_py_logging(event['level'].decode())
-            msg = '{}: {}'.format(event['prefix'].decode(), event['text'].decode().rstrip('\n'))
+            level = mpv_to_py_logging(event['level'])
+            msg = '{}: {}'.format(event['prefix'], event['text'])
             getattr(mpv_logger, level)(msg)
         except Exception:
             mpv_logger.warning('mpv log error: {}'.format(event))
@@ -256,7 +245,7 @@ class MPVPlayer(QWidget):
     def do_shutdown(self, event):
         logger.info('Player: exiting mpv player')
         del self.mpv
-        self.settings.setValue('last_volume', self.last_volume)
+        self.settings.setValue('last_volume', self.ui.slider_volume.value())
         self._event_thread.quit()
         self._event_thread.wait()
         self.player_stopped.emit()
@@ -268,8 +257,12 @@ class MPVPlayer(QWidget):
         self.do_timeline_update(state='playing')
 
     def do_timeline_update(self, state):
-        self.update_timeline.emit(self.play_queue, self.current_item,
-                                  self.mpv.time_pos if self.mpv.time_pos else 0.0, self.headers, state)
+        try:
+            time = self.mpv.time_pos
+        except AttributeError:
+            return
+        self.update_timeline.emit(self.play_queue, self.current_item, time,
+                                  self.headers, state)
 
     def do_property_change(self, event):
         if event['data'] is None:
@@ -281,12 +274,12 @@ class MPVPlayer(QWidget):
             self.ui.slider_progress.setMaximum(ms)
             self.update_total_time(ms)
         elif event['name'] == 'volume':
-            self.ui.slider_volume.setSliderPosition(event['data'])
-            self.last_volume = event['data']
+            if self.ui.slider_volume.value() != event['data']:
+                self.ui.slider_volume.setSliderPosition(event['data'])
         elif event['name'] == 'playback-time':
             self._playback_time_count += 1
             ms = event['data'] * 1000
-            if self._playback_time_count == 500:
+            if self._playback_time_count > 499:
                 self.do_timeline_update('playing')
                 self._playback_time_count = 0
             if not self.ui.slider_progress.isSliderDown():
@@ -295,29 +288,24 @@ class MPVPlayer(QWidget):
         elif event['name'] == 'track-list':
             tracks = event['data']
             logger.info('track-list: {}'.format(tracks))
-            logger.info('track-list2: {}'.format(self.mpv.track_list))
-            logger.info('pl: {}'.format(self.mpv.playlist))
-            logger.info('cl: {}'.format(self.mpv.chapter_list))
-            # logger.info('vop: {}'.format(self.mpv.video_out_params))
             if not tracks:
                 return
             for selector in [self.ui.video_tracks, self.ui.audio_tracks, self.ui.sub_tracks]:
                 selector.update_tracks(tracks)
-
             self.ui.player_widget.setVisible(self.ui.video_tracks.count() > 0)
             self.ui.playlist.setVisible(not self.ui.player_widget.isVisible())
         elif event['name'] == 'video-params':
-            logger.info('vp: {}'.format(event['data']))
-            logger.info('vp: {}'.format(self.mpv.video_params))
+            video_params = event['data']
+            logger.info('video-params: {}'.format(video_params))
+            if not self.resized:
+                self.resized = True
+                self.resize(QSize(video_params['w'], video_params['h'] + self.ui.control_bar.height()))
         elif event['name'] == 'video-out-params':
-            logger.info('vop: {}'.format(event['data']))
-            logger.info('vop: {}'.format(self.mpv.video_out_params))
+            logger.info('video-out-params: {}'.format(event['data']))
         elif event['name'] == 'metadata':
-            logger.info('md: {}'.format(event['data']))
-            logger.info('md: {}'.format(self.mpv.metadata))
+            logger.info('metadata: {}'.format(event['data']))
         elif event['name'] == 'chapter-metadata':
-            logger.info('cmd: {}'.format(event['data']))
-            logger.info('cmd: {}'.format(self.mpv.chapter_metadata))
+            logger.info('chapter-metadata: {}'.format(event['data']))
 
     ############################################################################
 
@@ -383,7 +371,6 @@ class MPVPlayer(QWidget):
 
     # QT EVENTS ################################################################
     def closeEvent(self, event):
-        self.do_timeline_update(state='stopped')
         self.mpv.quit()
         self._timeline_thread.quit()
         self._timeline_thread.wait()

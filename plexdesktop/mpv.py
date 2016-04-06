@@ -142,7 +142,7 @@ class MpvEventProperty(Structure):
         if self.format.value == MpvFormat.NONE:
             data = None
         elif self.format.value == MpvFormat.NODE:
-            data = dpointer.contents.as_dict()
+            data = dpointer.contents.get_value()
         elif self.format.value == MpvFormat.STRING:
             data = dpointer.contents.value.decode()
         else:
@@ -180,7 +180,7 @@ class MpvNode(Structure):
     _fields_ = [('u', _MpvNodeUnion),
                 ('format', MpvFormat)]
 
-    def as_dict(self):
+    def get_value(self):
         # this doesn't work with {}[] instead of if statements.
         if self.format.value in [MpvFormat.STRING, MpvFormat.OSD_STRING]:
             return self.string.decode()
@@ -191,9 +191,9 @@ class MpvNode(Structure):
         elif self.format.value == MpvFormat.DOUBLE:
             return self.double_
         elif self.format.value == MpvFormat.NODE_ARRAY:
-            return [node.as_dict() for node in self.list.contents.as_list()]
+            return [node.get_value() for node in self.list.contents.as_list()]
         elif self.format.value == MpvFormat.NODE_MAP:
-            return {key: node.as_dict() for key, node in self.list.contents.as_dict().items()}
+            return {key: node.get_value() for key, node in self.list.contents.as_dict().items()}
         elif self.format.value == MpvFormat.BYTE_ARRAY:
             raise NotImplementedError
         else:
@@ -211,7 +211,7 @@ class MpvEventLogMessage(Structure):
                 ('text', c_char_p)]
 
     def as_dict(self):
-        return {name: getattr(self, name) for name, _t in self._fields_}
+        return {name: getattr(self, name).decode().rstrip('\n') for name, _t in self._fields_}
 
 
 class MpvEventEndFile(c_int):
@@ -503,7 +503,7 @@ class MPV:
         elif mpv_format == MpvFormat.DOUBLE:
             return float(res.value)
         elif mpv_format == MpvFormat.NODE:
-            data = res.as_dict()
+            data = res.get_value()
             _mpv_free_node_contents(res)
             return data
 
