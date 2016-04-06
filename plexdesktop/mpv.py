@@ -1,9 +1,5 @@
-
 from ctypes import *
 import platform
-
-# vim: ts=4 sw=4
-
 
 if platform.system() == 'Windows':
     backend = CDLL('mpv-1.dll')
@@ -56,7 +52,7 @@ class ErrorCode:
     @classmethod
     def raise_for_ec(kls, func, *args):
         ec = func(*args)
-        ex = kls.EXCEPTION_DICT.get(ec , kls.DEFAULT_ERROR_HANDLER)
+        ex = kls.EXCEPTION_DICT.get(ec, kls.DEFAULT_ERROR_HANDLER)
         if ex:
             raise ex(ec, *args)
 
@@ -71,6 +67,23 @@ class MpvFormat(c_int):
     NODE        = 6
     NODE_ARRAY  = 7
     NODE_MAP    = 8
+    BYTE_ARRAY  = 9
+
+    def __repr__(self):
+        return ['NONE', 'STRING', 'OSD_STRING', 'FLAG', 'INT64', 'DOUBLE',
+                'NODE', 'NODE_ARRAY', 'NODE_MAP', 'BYTE_ARRAY'][self.value]
+
+    def to_ctypes(self):
+        return {MpvFormat.NONE: None,
+                MpvFormat.STRING: c_char_p,
+                MpvFormat.OSD_STRING: c_char_p,
+                MpvFormat.FLAG: c_int,
+                MpvFormat.INT64: c_longlong,
+                MpvFormat.DOUBLE: c_double,
+                MpvFormat.NODE: MpvNode,
+                MpvFormat.NODE_ARRAY: MpvNodeList,
+                MpvFormat.NODE_MAP: MpvNodeList,
+                MpvFormat.BYTE_ARRAY: MpvByteArray}[self.value]
 
 
 class MpvEventID(c_int):
@@ -129,20 +142,68 @@ class MpvEventProperty(Structure):
     _fields_ = [('name', c_char_p),
                 ('format', MpvFormat),
                 ('data', c_void_p)]
+
     def as_dict(self):
-        dtype = {MpvFormat.NONE       : None,
-                 MpvFormat.STRING     : c_char_p,
-                 MpvFormat.OSD_STRING : c_char_p,
-                 MpvFormat.FLAG       : c_int,
-                 MpvFormat.INT64      : c_longlong,
-                 MpvFormat.DOUBLE     : c_double,
-                 MpvFormat.NODE       : None,
-                 MpvFormat.NODE_ARRAY : None,
-                 MpvFormat.NODE_MAP   : None
-                }.get(self.format.value, None)
+        if self.format.value == MpvFormat.NONE:
+            data = None
+        elif self.format.value == MpvFormat.NODE:
+            dpointer = cast(self.data, POINTER(dtype))
+            data['data'] = dpointer.contents.as_dict()
+        else:
+            dpointer = cast(self.data, POINTER(dtype))
+            data['data'] = dpointer.contents.value
         return {'name': self.name.decode(),
                 'format': self.format,
-                'data': cast(self.data, POINTER(dtype)).contents.value if dtype else None}
+                'data': data}
+
+
+class MpvNodeList(Structure):
+
+    def as_list(self):
+        return [self.values[i] for i in range(self.num)]
+
+    def as_dict(self):
+        return {self.keys[i].decode(): self.values[i] for i in range(self.num)}
+
+
+class MpvByteArray(Structure):
+    _fields_ = [('data', c_void_p),
+                ('size', c_size_t)]
+
+
+class _MpvNodeUnion(Union):
+    _fields_ = [('string', c_char_p),
+                ('flag', c_int),
+                ('int64', c_longlong),
+                ('double_', c_double),
+                ('list', POINTER(MpvNodeList)),
+                ('ba', POINTER(MpvByteArray))]
+
+
+class MpvNode(Structure):
+    _anonymous_ = ('u',)
+    _fields_ = [('u', _MpvNodeUnion),
+                ('format', MpvFormat)]
+
+    def as_dict(self):
+        # this doesn't work with {}[] instead of if statements.
+        if self.format.value == MpvFormat.NODE_ARRAY:
+            return [node.as_dict() for node in self.list.contents.as_list()]
+        elif self.format.value == MpvFormat.NODE_MAP:
+            return {key: node.as_dict() for key, node in self.list.contents.as_dict().items()}
+        elif self.format.value == MpvFormat.STRING:
+            return self.string.decode()
+        elif self.format.value == MpvFormat.INT64:
+            return self.int64
+        elif self.format.value == MpvFormat.FLAG:
+            return bool(self.flag)
+        else:
+            return None
+
+
+MpvNodeList._fields_ = [('num', c_int),
+                        ('values', POINTER(MpvNode)),
+                        ('keys', POINTER(c_char_p))]
 
 
 class MpvEventLogMessage(Structure):
@@ -151,7 +212,7 @@ class MpvEventLogMessage(Structure):
                 ('text', c_char_p)]
 
     def as_dict(self):
-        return { name: getattr(self, name) for name, _t in self._fields_ }
+        return {name: getattr(self, name) for name, _t in self._fields_}
 
 
 class MpvEventEndFile(c_int):
@@ -177,7 +238,7 @@ class MpvEventClientMessage(Structure):
                 ('args', POINTER(c_char_p))]
 
     def as_dict(self):
-        return { 'args': [ self.args[i].value for i in range(self.num_args.value) ] }
+        return {'args': [self.args[i].value for i in range(self.num_args.value)]}
 
 WakeupCallback = CFUNCTYPE(None, c_void_p)
 
@@ -187,12 +248,13 @@ def _handle_func(name, args=[], res=None):
     if res is not None:
         func.restype = res
     func.argtypes = [MpvHandle] + args
+
     def wrapper(*args):
         if res is not None:
             return func(*args)
         else:
             ErrorCode.raise_for_ec(func, *args)
-    globals()['_'+name] = wrapper
+    globals()['_' + name] = wrapper
 
 
 backend.mpv_client_api_version.restype = c_ulong
@@ -200,7 +262,7 @@ backend.mpv_client_api_version.restype = c_ulong
 
 def _mpv_client_api_version():
     ver = backend.mpv_client_api_version()
-    return ver>>16, ver&0xFFFF
+    return ver >> 16, ver & 0xFFFF
 
 backend.mpv_free.argtypes = [c_void_p]
 _mpv_free = backend.mpv_free
@@ -208,6 +270,8 @@ _mpv_free = backend.mpv_free
 backend.mpv_create.restype = MpvHandle
 _mpv_create = backend.mpv_create
 
+_handle_func('mpv_free_node_contents', [POINTER(MpvNode)])
+_handle_func('mpv_create_client', [c_char_p], MpvHandle)
 _handle_func('mpv_client_name', [], c_char_p)
 _handle_func('mpv_initialize')
 _handle_func('mpv_detach_destroy', [], c_int)
@@ -263,6 +327,9 @@ class ynbool:
     def __repr__(self):
         return str(self.val)
 
+    def __eq__(self, other):
+        return str(self) == other or bool(self) == other
+
 
 def _ensure_encoding(possibly_bytes):
     return possibly_bytes.decode() if type(possibly_bytes) is bytes else possibly_bytes
@@ -272,8 +339,8 @@ def _event_generator(handle):
     while True:
         try:
             event = _mpv_wait_event(handle, -1).contents
-        except OSError:
-            raise StopIteration()
+        except OSError as e:
+            raise StopIteration(str(e))
         if event.event_id.value == MpvEventID.NONE:
             raise StopIteration()
         yield event
@@ -294,8 +361,11 @@ class MPV:
         self.handle = _mpv_create()
 
         _mpv_set_option_string(self.handle, b'audio-display', b'no')
-        istr = lambda o: ('yes' if o else 'no') if type(o) is bool else str(o)
-        for k,v in kwargs.items():
+
+        def istr(o):
+            return ('yes' if o else 'no') if type(o) is bool else str(o)
+
+        for k, v in kwargs.items():
             try:
                 _mpv_set_option_string(self.handle, k.replace('_', '-').encode(), istr(v).encode())
             except Exception as e:
@@ -318,13 +388,13 @@ class MPV:
     def request_log_messages(self, level):
         _mpv_request_log_messages(self.handle, level.encode())
 
-    def observe_property(self, reply_userdata, name, mpv_format):
-        _mpv_observe_property(self.handle, reply_userdata, name.encode(), mpv_format)
+    def observe_property(self, name, mpv_format):
+        _mpv_observe_property(self.handle, 0, name.encode(), mpv_format)
 
     def command(self, name, *args):
         """ Execute a raw command """
-        args = [name.encode()] + [ str(arg).encode() for arg in args if arg is not None ] + [None]
-        _mpv_command(self.handle, (c_char_p*len(args))(*args))
+        args = [name.encode()] + [str(arg).encode() for arg in args if arg is not None] + [None]
+        _mpv_command(self.handle, (c_char_p * len(args))(*args))
 
     def seek(self, amount, reference="relative", precision="default-precise"):
         self.command('seek', amount, reference, precision)
@@ -471,6 +541,7 @@ class MPV:
     @property
     def playlist(self):
         return self._get_list('playlist/', (('filename', str),))
+
     @property
     def track_list(self):
         return self._get_list('track-list/', (
@@ -485,138 +556,148 @@ class MPV:
                          ('external-filename',  str),
                          ('codec',              str),
                          ('selected',           ynbool)))
+
     @property
     def chapter_list(self):
         return self._get_dict('chapter-list/', (('title', str), ('time', float)))
 
     def _get_dict(self, prefix, props):
-        return { name: proptype(_ensure_encoding(_mpv_get_property_string(self.handle, (prefix+name).encode()))) for name, proptype in props }
+        return {name: proptype(_ensure_encoding(_mpv_get_property_string(self.handle, (prefix + name).encode()))) for name, proptype in props}
 
     def _get_list(self, prefix, props):
-        count = int(_ensure_encoding(_mpv_get_property_string(self.handle, (prefix+'count').encode())))
-        return [ self._get_dict(prefix+str(index)+'/', props) for index in range(count)]
+        count = int(_ensure_encoding(_mpv_get_property_string(self.handle, (prefix + 'count').encode())))
+        return [self._get_dict(prefix + str(index) + '/', props) for index in range(count)]
 
     # TODO: af, vf properties
     # TODO: edition-list
     # TODO property-mapped options
 
 
+ALL_PROPERTIES = {
+    'osd-level':                   (int,    'rw'),
+    'osd-scale':                   (float,  'rw'),
+    'loop':                        (str,    'rw'),
+    'loop-file':                   (str,    'rw'),
+    'speed':                       (float,  'rw'),
+    'filename':                    (str,    'r'),
+    'file-size':                   (int,    'r'),
+    'path':                        (str,    'r'),
+    'media-title':                 (str,    'r'),
+    'stream-pos':                  (int,    'rw'),
+    'stream-end':                  (int,    'r'),
+    'length':                      (float,  'r'),
+    'avsync':                      (float,  'r'),
+    'total-avsync-change':         (float,  'r'),
+    'drop-frame-count':            (int,    'r'),
+    'percent-pos':                 (float,  'rw'),
+    'ratio-pos':                   (float,  'rw'),
+    'time-pos':                    (float,  'rw'),
+    'time-start':                  (float,  'r'),
+    'time-remaining':              (float,  'r'),
+    'playtime-remaining':          (float,  'r'),
+    'chapter':                     (int,    'rw'),
+    'edition':                     (int,    'rw'),
+    'disc-titles':                 (int,    'r'),
+    'disc-title':                  (str,    'rw'),
+    'disc-menu-active':            (ynbool, 'r'),
+    'chapters':                    (int,    'r'),
+    'editions':                    (int,    'r'),
+    'angle':                       (int,    'rw'),
+    'pause':                       (ynbool, 'rw'),
+    'core-idle':                   (ynbool, 'r'),
+    'cache':                       (int,    'r'),
+    'cache-size':                  (int,    'rw'),
+    'pause-for-cache':             (ynbool, 'r'),
+    'eof-reached':                 (ynbool, 'r'),
+    'pts-association-mode':        (str,    'rw'),
+    'hr-seek':                     (ynbool, 'rw'),
+    'volume':                      (float,  'rw'),
+    'mute':                        (ynbool, 'rw'),
+    'audio-delay':                 (float,  'rw'),
+    'audio-format':                (str,    'r'),
+    'audio-codec':                 (str,    'r'),
+    'audio-bitrate':               (float,  'r'),
+    'audio-samplerate':            (int,    'r'),
+    'audio-channels':              (str,    'r'),
+    'aid':                         (str,    'rw'),
+    'audio':                       (str,    'rw'), # alias for aid
+    'balance':                     (float,  'rw'),
+    'fullscreen':                  (ynbool, 'rw'),
+    'deinterlace':                 (str,    'rw'),
+    'colormatrix':                 (str,    'rw'),
+    'colormatrix-input-range':     (str,    'rw'),
+    'colormatrix-output-range':    (str,    'rw'),
+    'colormatrix-primaries':       (str,    'rw'),
+    'ontop':                       (ynbool, 'rw'),
+    'border':                      (ynbool, 'rw'),
+    'framedrop':                   (str,    'rw'),
+    'gamma':                       (float,  'rw'),
+    'brightness':                  (int,    'rw'),
+    'contrast':                    (int,    'rw'),
+    'saturation':                  (int,    'rw'),
+    'hue':                         (int,    'rw'),
+    'hwdec':                       (ynbool, 'rw'),
+    'panscan':                     (float,  'rw'),
+    'video-format':                (str,    'r'),
+    'video-codec':                 (str,    'r'),
+    'video-bitrate':               (float,  'r'),
+    'width':                       (int,    'r'),
+    'height':                      (int,    'r'),
+    'dwidth':                      (int,    'r'),
+    'dheight':                     (int,    'r'),
+    'fps':                         (float,  'r'),
+    'estimated-vf-fps':            (float,  'r'),
+    'window-scale':                (float,  'rw'),
+    'video-aspect':                (str,    'rw'),
+    'osd-width':                   (int,    'r'),
+    'osd-height':                  (int,    'r'),
+    'osd-par':                     (float,  'r'),
+    'vid':                         (str,    'rw'),
+    'video':                       (str,    'rw'), # alias for vid
+    'video-align-x':               (float,  'rw'),
+    'video-align-y':               (float,  'rw'),
+    'video-pan-x':                 (int,    'rw'),
+    'video-pan-y':                 (int,    'rw'),
+    'video-zoom':                  (float,  'rw'),
+    'video-unscaled':              (ynbool, 'w'),
+    'program':                     (int,    'w'),
+    'sid':                         (str,    'rw'),
+    'sub':                         (str,    'rw'), # alias for sid
+    'secondary-sid':               (str,    'rw'),
+    'sub-delay':                   (float,  'rw'),
+    'sub-pos':                     (int,    'rw'),
+    'sub-visibility':              (ynbool, 'rw'),
+    'sub-forced-only':             (ynbool, 'rw'),
+    'sub-scale':                   (float,  'rw'),
+    'ass-use-margins':             (ynbool, 'rw'),
+    'ass-vsfilter-aspect-compat':  (ynbool, 'rw'),
+    'ass-style-override':          (str,    'rw'),
+    'stream-capture':              (str,    'rw'),
+    'tv-brightness':               (int,    'rw'),
+    'tv-contrast':                 (int,    'rw'),
+    'tv-saturation':               (int,    'rw'),
+    'tv-hue':                      (int,    'rw'),
+    'playlist-pos':                (int,    'rw'),
+    'playlist-count':              (int,    'r'),
+    'quvi-format':                 (str,    'rw'),
+    'seekable':                    (ynbool, 'r')}
+
+
 def bindproperty(MPV, name, proptype, access):
     def getter(self):
-        return proptype(_ensure_encoding(_mpv_get_property_string(self.handle, name.encode())))
+        cval = _mpv_get_property_string(self.handle, name.encode())
+        if cval is None:
+            return None
+        rv = proptype(cval.decode())
+#        _mpv_free(cval) FIXME
+        return rv
+
     def setter(self, value):
         _mpv_set_property_string(self.handle, name.encode(), str(proptype(value)).encode())
+
     def barf(*args):
         raise NotImplementedError('Access denied')
     setattr(MPV, name.replace('-', '_'), property(getter if 'r' in access else barf, setter if 'w' in access else barf))
 
-for name, proptype, access in (
-        ('osd-level',                   int,    'rw'),
-        ('osd-scale',                   float,  'rw'),
-        ('loop',                        str,    'rw'),
-        ('loop-file',                   str,    'rw'),
-        ('speed',                       float,  'rw'),
-        ('filename',                    str,    'r'),
-        ('file-size',                   int,    'r'),
-        ('path',                        str,    'r'),
-        ('media-title',                 str,    'r'),
-        ('stream-pos',                  int,    'rw'),
-        ('stream-end',                  int,    'r'),
-        ('length',                      float,  'r'),
-        ('avsync',                      float,  'r'),
-        ('total-avsync-change',         float,  'r'),
-        ('drop-frame-count',            int,    'r'),
-        ('percent-pos',                 int,    'rw'),
-        ('ratio-pos',                   float,  'rw'),
-        ('time-pos',                    float,  'rw'),
-        ('time-start',                  float,  'r'),
-        ('time-remaining',              float,  'r'),
-        ('playtime-remaining',          float,  'r'),
-        ('chapter',                     int,    'rw'),
-        ('edition',                     int,    'rw'),
-        ('disc-titles',                 int,    'r'),
-        ('disc-title',                  str,    'rw'),
-        ('disc-menu-active',            ynbool, 'r'),
-        ('chapters',                    int,    'r'),
-        ('editions',                    int,    'r'),
-        ('angle',                       int,    'rw'),
-        ('pause',                       ynbool, 'rw'),
-        ('core-idle',                   ynbool, 'r'),
-        ('cache',                       int,    'r'),
-        ('cache-size'    ,              int,    'rw'),
-        ('pause-for-cache',             ynbool, 'r'),
-        ('eof-reached',                 ynbool, 'r'),
-        ('pts-association-mode',        str,    'rw'),
-        ('hr-seek',                     ynbool, 'rw'),
-        ('volume',                      float,  'rw'),
-        ('mute',                        ynbool, 'rw'),
-        ('audio-delay',                 float,  'rw'),
-        ('audio-format',                str,    'r'),
-        ('audio-codec',                 str,    'r'),
-        ('audio-bitrate',               float,  'r'),
-        ('audio-samplerate',            int,    'r'),
-        ('audio-channels',              str,    'r'),
-        ('aid',                         int,    'rw'),
-        ('audio',                       int,    'rw'),
-        ('balance',                     int,    'rw'),
-        ('fullscreen',                  ynbool, 'rw'),
-        ('deinterlace',                 str,    'rw'),
-        ('colormatrix',                 str,    'rw'),
-        ('colormatrix-input-range',     str,    'rw'),
-        ('colormatrix-output-range',    str,    'rw'),
-        ('colormatrix-primaries',       str,    'rw'),
-        ('ontop',                       ynbool, 'rw'),
-        ('border',                      ynbool, 'rw'),
-        ('framedrop',                   str,    'rw'),
-        ('gamma',                       float,  'rw'),
-        ('brightness',                  int,    'rw'),
-        ('contrast',                    int,    'rw'),
-        ('saturation',                  int,    'rw'),
-        ('hue',                         int,    'rw'),
-        ('hwdec',                       ynbool, 'rw'),
-        ('panscan',                     float,  'rw'),
-        ('video-format',                str,    'r'),
-        ('video-codec',                 str,    'r'),
-        ('video-bitrate',               float,  'r'),
-        ('width',                       int,    'r'),
-        ('height',                      int,    'r'),
-        ('dwidth',                      int,    'r'),
-        ('dheight',                     int,    'r'),
-        ('fps',                         float,  'r'),
-        ('estimated-vf-fps',            float,  'r'),
-        ('window-scale',                float,  'rw'),
-        ('video-aspect',                str,    'rw'),
-        ('osd-width',                   int,    'r'),
-        ('osd-height',                  int,    'r'),
-        ('osd-par',                     float,  'r'),
-        ('vid',                         int,    'rw'),
-        ('video',                       int,    'rw'),
-        ('video-align-x',               float,  'rw'),
-        ('video-align-y',               float,  'rw'),
-        ('video-pan-x',                 int,    'rw'),
-        ('video-pan-y',                 int,    'rw'),
-        ('video-zoom',                  float,  'rw'),
-        ('video-unscaled',              ynbool, 'w'),
-        ('program',                     int,    'w'),
-        ('sid',                         int,    'rw'),
-        ('secondary-sid',               int,    'rw'),
-        ('sub',                         int,    'rw'),
-        ('sub-delay',                   float,  'rw'),
-        ('sub-pos',                     int,    'rw'),
-        ('sub-visibility',              ynbool, 'rw'),
-        ('sub-forced-only',             ynbool, 'rw'),
-        ('sub-scale',                   float,  'rw'),
-        ('ass-use-margins',             ynbool, 'rw'),
-        ('ass-vsfilter-aspect-compat',  ynbool, 'rw'),
-        ('ass-style-override',          str,    'rw'),
-        ('stream-capture',              str,    'rw'),
-        ('tv-brightness',               int,    'rw'),
-        ('tv-contrast',                 int,    'rw'),
-        ('tv-saturation',               int,    'rw'),
-        ('tv-hue',                      int,    'rw'),
-        ('playlist-pos',                int,    'rw'),
-        ('playlist-count',              int,    'r'),
-        ('quvi-format',                 str,    'rw'),
-        ('seekable',                    ynbool, 'r')):
+for name, (proptype, access) in ALL_PROPERTIES.items():
     bindproperty(MPV, name, proptype, access)
-
