@@ -43,7 +43,20 @@ class TimelineUpdater(QObject):
         self.done.emit()
 
 
-class MPVPlayer(QWidget):
+class PlayerUI(QWidget):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_Player()
+        self.ui.setupUi(self)
+
+        self.ui.player_widget.setAttribute(Qt.WA_DontCreateNativeAncestors)
+        self.ui.player_widget.setAttribute(Qt.WA_NativeWindow)
+
+
+
+
+class MPVPlayer(QMainWindow):
     player_stopped = pyqtSignal()
     playback_started = pyqtSignal()
     update_timeline = pyqtSignal(plexdevices.PlayQueue, plexdevices.MediaItem, float, dict, str)
@@ -52,16 +65,9 @@ class MPVPlayer(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ui = Ui_Player()
-        self.ui.setupUi(self)
-        self.ui.player_widget.setAttribute(Qt.WA_DontCreateNativeAncestors)
-        self.ui.player_widget.setAttribute(Qt.WA_NativeWindow)
-
-        self.ui.playlist.hide()
-        self.ui.playlist.setItemDelegate(self.ui.playlist.delegate_default)
-        self.ui.playlist.itemDoubleClicked.connect(self.playlist_item_double_clicked)
-        self.ui.btn_playlist.pressed.connect(self.toggle_playlist)
-        self.ui.playlist.customContextMenuRequested.connect(self.playlist_context_menu)
+        self.ui_widget = PlayerUI(self)
+        self.setCentralWidget(self.ui_widget)
+        self.ui = self.ui_widget.ui
 
         # MPV setup
         wid = int(self.ui.player_widget.winId())
@@ -146,6 +152,12 @@ class MPVPlayer(QWidget):
         self.ui.sub_tracks.currentIndexChanged.connect(self.change_sub_track)
         self.ui.video_tracks.currentIndexChanged.connect(self.change_sub_track)
 
+        self.ui.playlist.hide()
+        self.ui.playlist.setItemDelegate(self.ui.playlist.delegate_default)
+        self.ui.playlist.itemDoubleClicked.connect(self.playlist_item_double_clicked)
+        self.ui.btn_playlist.pressed.connect(self.toggle_playlist)
+        self.ui.playlist.customContextMenuRequested.connect(self.playlist_context_menu)
+
     @property
     def headers(self):
         return {'X-Plex-Client-Identifier': 'test1',
@@ -220,7 +232,7 @@ class MPVPlayer(QWidget):
 
     def do_file_loaded(self, event):
         if self.current_item.in_progress and self.current_item.view_offset > 0:
-            self.mpv.seek(self.current_item.view_offset // 1000, 'absolute')
+            self.seek(self.current_item.view_offset / 1000.0)
         self.playback_started.emit()
 
     def do_end_file(self, event):
@@ -352,9 +364,9 @@ class MPVPlayer(QWidget):
     def pause(self):
         self.mpv.pause = not self.mpv.pause
 
-    def seek(self):
+    def seek(self, pos=None):
         try:
-            self.mpv.seek(self.ui.slider_progress.value() / 1000, 'absolute')
+            self.mpv.seek(pos if pos else self.ui.slider_progress.value() / 1000.0, 'absolute+exact')
             self.do_timeline_update('playing')
         except Exception as e:
             logger.warning('Player: ' + str(e))

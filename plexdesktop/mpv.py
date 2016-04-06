@@ -154,6 +154,14 @@ class MpvEventProperty(Structure):
 
 class MpvNodeList(Structure):
 
+    def __init__(self, is_map, num):
+        self.num = num
+        v = (MpvNode * num)()
+        self.values = cast(v, POINTER(MpvNode))
+        if is_map:
+            k = (c_char_p * num)()
+            self.keys = cast(k, POINTER(c_char_p))
+
     def as_list(self):
         return [self.values[i] for i in range(self.num)]
 
@@ -288,6 +296,7 @@ _handle_func('mpv_set_option_string', [c_char_p, c_char_p])
 _handle_func('mpv_command', [POINTER(c_char_p)])
 _handle_func('mpv_command_string', [c_char_p, c_char_p])
 _handle_func('mpv_command_async', [c_ulonglong, POINTER(c_char_p)])
+_handle_func('mpv_command_node', [POINTER(MpvNode), POINTER(MpvNode)])
 
 _handle_func('mpv_set_property', [c_char_p, MpvFormat, c_void_p])
 _handle_func('mpv_set_property_string', [c_char_p, c_char_p])
@@ -381,8 +390,18 @@ class MPV:
         args = [name.encode()] + [str(arg).encode() for arg in args if arg is not None] + [None]
         _mpv_command(self.handle, (c_char_p * len(args))(*args))
 
+    def command_node(self, *args):
+        """Send a command with an MpvNode instead of strings."""
+        nb = NodeBuilder(args)
+        res = MpvNode()
+        _mpv_command_node(self.handle, cast(addressof(nb.node), POINTER(MpvNode)),
+                          cast(addressof(res), POINTER(MpvNode)))
+        data = res.get_value()
+        _mpv_free_node_contents(res)
+        return data
+
     def seek(self, amount, reference="relative", precision="default-precise"):
-        self.command('seek', amount, reference, precision)
+        self.command_node('seek', amount, reference, precision)
 
     def revert_seek(self):
         self.command('revert_seek')
@@ -588,6 +607,7 @@ ALL_PROPERTIES = {
     'pause':                       (MpvFormat.FLAG,   'rw'),
     'pause-for-cache':             (MpvFormat.FLAG,   'r'),
     'percent-pos':                 (MpvFormat.DOUBLE, 'rw'),
+    'playback-time':               (MpvFormat.DOUBLE, 'rw'),
     'playlist-count':              (MpvFormat.INT64,  'r'),
     'playlist-pos':                (MpvFormat.INT64,  'rw'),
     'playtime-remaining':          (MpvFormat.DOUBLE, 'r'),
@@ -662,3 +682,43 @@ def bindproperty(MPV, name, proptype, access):
 
 for name, (proptype, access) in ALL_PROPERTIES.items():
     bindproperty(MPV, name, proptype, access)
+
+
+class NodeBuilder(object):
+
+    def __init__(self, value):
+        self.heap = []
+        self.node = MpvNode()
+        self.set(self.node, value)
+
+    def set(self, dst, src):
+        src_t = type(src)
+        if src_t is str:
+            dst.format.value = MpvFormat.STRING
+            dst.string = src.encode()
+        elif src_t is bool:
+            dst.format.value = MpvFormat.FLAG
+            dst.flag.value = int(src)
+        elif src_t is int:
+            dst.format.value = MpvFormat.INT64
+            dst.int64.value = src
+        elif src_t is float:
+            dst.format.value = MpvFormat.DOUBLE
+            dst.double_ = src
+        elif src_t in (list, tuple):
+            l = MpvNodeList(False, len(src))
+            self.heap.append(l)
+            dst.format.value = MpvFormat.NODE_ARRAY
+            dst.list = cast(addressof(l), POINTER(MpvNodeList))
+            for i, item in enumerate(src):
+                self.set(dst.list.contents.values[i], item)
+        elif src_t is dict:
+            l = MpvNodeList(True, len(src))
+            self.heap.append(l)
+            dst.format.value = MpvFormat.NODE_MAP
+            dst.list = cast(addressof(l), POINTER(MpvNodeList))
+            for i, (k, v) in enumerate(src.items()):
+                dst.list.contents.keys[i] = k.encode()
+                self.set(dst.list.contents.values[i], v)
+        else:
+            return
