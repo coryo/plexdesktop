@@ -147,11 +147,11 @@ class MpvEventProperty(Structure):
         if self.format.value == MpvFormat.NONE:
             data = None
         elif self.format.value == MpvFormat.NODE:
-            dpointer = cast(self.data, POINTER(dtype))
-            data['data'] = dpointer.contents.as_dict()
+            dpointer = cast(self.data, POINTER(self.format.to_ctypes()))
+            data = dpointer.contents.as_dict()
         else:
-            dpointer = cast(self.data, POINTER(dtype))
-            data['data'] = dpointer.contents.value
+            dpointer = cast(self.data, POINTER(self.format.to_ctypes()))
+            data = dpointer.contents.value
         return {'name': self.name.decode(),
                 'format': self.format,
                 'data': data}
