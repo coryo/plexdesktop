@@ -11,7 +11,7 @@ from plexdesktop.player import MPVPlayer
 from plexdesktop.photo_viewer import PhotoViewer
 from plexdesktop.utils import *
 from plexdesktop.extra_widgets import (PreferencesObjectDialog, ManualServerDialog,
-                                       LoginDialog)
+                                       LoginDialog, TrackSelector)
 from plexdesktop.sqlcache import DB_IMAGE, DB_THUMB
 from plexdesktop.remote import Remote
 from plexdesktop.sessionmanager import SessionManager
@@ -89,6 +89,7 @@ class Browser(QMainWindow):
 
         self.ui.servers.currentIndexChanged.connect(self.action_change_server)
         self.ui.users.currentIndexChanged.connect(self.action_change_user)
+        self.ui.shortcuts.activated.connect(self.load_shortcut)
         # Menu
         self.ui.actionQuit.triggered.connect(self.close)
         self.ui.actionLogin_Refresh.triggered.connect(self.action_login)
@@ -181,13 +182,10 @@ class Browser(QMainWindow):
             self.history.append(self.location)
 
     def toggle_shortcut_button(self):
-        self.ui.btn_add_shortcut.disconnect()
-        if self.location.tuple() in self.shortcuts.values():
-            self.ui.btn_add_shortcut.setText('- shortcut')
-            self.ui.btn_add_shortcut.pressed.connect(self.remove_shortcut)
-        else:
-            self.ui.btn_add_shortcut.setText('+ shortcut')
-            self.ui.btn_add_shortcut.pressed.connect(self.action_add_shortcut)
+        self.ui.btn_add_shortcut.blockSignals(True)
+        self.ui.btn_add_shortcut.setText(('-' if self.location.tuple() in
+                                          self.shortcuts.values() else '+') + ' shortcut')
+        self.ui.btn_add_shortcut.blockSignals(False)
 
     def remove_shortcut(self):
         try:
@@ -215,7 +213,7 @@ class Browser(QMainWindow):
             self.toggle_shortcut_button()
 
     def load_shortcuts(self):
-        self.ui.shortcuts.disconnect()
+        self.ui.shortcuts.blockSignals(True)
         self.ui.shortcuts.clear()
         s = Settings()
         f = s.value('shortcuts-{}'.format(self.session_manager.server.client_identifier))
@@ -224,7 +222,7 @@ class Browser(QMainWindow):
             for name, loc in f.items():
                 self.ui.shortcuts.addItem(name, name)
         self.ui.shortcuts.setVisible(self.ui.shortcuts.count() > 0)
-        self.ui.shortcuts.activated.connect(self.load_shortcut)
+        self.ui.shortcuts.blockSignals(False)
 
     def load_shortcut(self):
         i = self.ui.shortcuts.currentText()
@@ -438,22 +436,22 @@ class Browser(QMainWindow):
 
     # UI Updates ###############################################################
     def ui_update_servers(self):
-        self.ui.servers.currentIndexChanged.disconnect()
+        self.ui.servers.blockSignals(True)
         self.ui.servers.clear()
         session = self.session_manager.session
         for server in session.servers:
             self.ui.servers.addItem('{} - {}'.format(server.name, server.product),
                                     server.client_identifier)
-        self.ui.servers.currentIndexChanged.connect(self.action_change_server)
+        self.ui.servers.blockSignals(False)
 
     def ui_update_users(self):
-        self.ui.users.currentIndexChanged.disconnect()
+        self.ui.users.blockSignals(True)
         self.ui.users.clear()
         session = self.session_manager.session
         for user in session.users:
             self.ui.users.addItem(user['title'], user['id'])
             logger.debug('{} {}'.format(user['title'], user['id']))
-        self.ui.users.currentIndexChanged.connect(self.action_change_user)
+        self.ui.users.blockSignals(False)
         self.ui.users.setVisible(self.ui.users.count() > 0)
 
     def ui_update_path(self, t1, t2):
@@ -464,35 +462,34 @@ class Browser(QMainWindow):
 
     def ui_update_metadata_panel(self, media_object):
         elements = ['title', 'summary', 'year', 'duration', 'rating', 'view_offset']
-        data = {x: getattr(media_object, x) for x in elements if hasattr(media_object, x)}
+        data = {x: getattr(media_object, x) for x in elements
+                if hasattr(media_object, x) and getattr(media_object, x)}
+        if 'summary' in data:
+            data['summary'] = data['summary'][:500]
+        if 'view_offset' in data:
+            data['view_offset'] = timestamp_from_ms(data['view_offset'])
         if 'duration' in data:
-            if data['duration'] > 0:
-                data['duration'] = timestamp_from_ms(int(data['duration']))
-                if data['view_offset'] > 0:
-                    data['duration'] = (timestamp_from_ms(data['view_offset']) +
-                                        ' / ' + data['duration'])
-            else:
-                del data['duration']
+            data['duration'] = timestamp_from_ms(data['duration'])
+        if 'view_offset' in data and 'duration' in data:
+            data['duration'] = data['view_offset'] + ' / ' + data['duration']
             del data['view_offset']
-        if 'year' in data and not data['year']:
-            del data['year']
         txt = ['{}: {}'.format(k, str(v)) for k, v in sorted(data.items())]
         self.ui.lbl_metadata.setText('\n'.join(txt))
 
     def ui_update_sort_no_signal(self, index):
-        self.ui.sort.currentIndexChanged.disconnect()
+        self.ui.sort.blockSignals(True)
         self.ui.sort.setCurrentIndex(index)
-        self.ui.sort.currentIndexChanged.connect(self.reload)
+        self.ui.sort.blockSignals(False)
 
     def ui_update_users_no_signal(self, index):
-        self.ui.users.currentIndexChanged.disconnect()
+        self.ui.users.blockSignals(True)
         self.ui.users.setCurrentIndex(index)
-        self.ui.users.currentIndexChanged.connect(self.action_change_user)
+        self.ui.users.blockSignals(False)
 
     def ui_update_servers_no_signal(self, index):
-        self.ui.servers.currentIndexChanged.disconnect()
+        self.ui.servers.blockSignals(True)
         self.ui.servers.setCurrentIndex(index)
-        self.ui.servers.currentIndexChanged.connect(self.action_change_server)
+        self.ui.servers.blockSignals(False)
 
     def ui_update_session(self):
         session = self.session_manager.session

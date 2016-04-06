@@ -140,8 +140,8 @@ class ListModel(QAbstractListModel):
             t1, t2 = self.container.title1, self.container.title2
             self.done.emit(t1, t2)
         else:
+            logger.error('Error fetching data.')
             self.done.emit('', '')
-            msg_box('Error fetching data.')
 
     def _add_container(self, container):
         if self.container is None:
