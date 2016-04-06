@@ -5,6 +5,27 @@ from PyQt5.QtGui import QPixmap, QImageReader, QTransform
 from plexdesktop.ui.login_ui import Ui_Login
 
 
+class TrackSelector(QComboBox):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tracks = []
+
+    def set_type(self, ttype):
+        self.ttype = ttype
+
+    def update_tracks(self, tracks):
+        self.tracks = [t for t in tracks if t['type'] == self.ttype]
+        old_state = self.blockSignals(True)
+        self.clear()
+        for track in self.tracks:
+            tid = track['id']
+            display_name = (track.get('lang', '') + ' ({})'.format(track['codec'])).strip()
+            self.addItem(display_name, tid)
+        self.setVisible(self.count() > 1)
+        self.blockSignals(old_state)
+
+
 class AspectRatioLabel(QLabel):
 
     def __init__(self, parent=None):

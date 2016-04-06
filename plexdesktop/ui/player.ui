@@ -238,7 +238,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="video_tracks">
+           <widget class="TrackSelector" name="video_tracks">
             <property name="font">
              <font>
               <pointsize>7</pointsize>
@@ -247,7 +247,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="audio_tracks">
+           <widget class="TrackSelector" name="audio_tracks">
             <property name="font">
              <font>
               <pointsize>7</pointsize>
@@ -259,7 +259,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="sub_tracks">
+           <widget class="TrackSelector" name="sub_tracks">
             <property name="font">
              <font>
               <pointsize>7</pointsize>
@@ -369,6 +369,11 @@
    <class>ListView</class>
    <extends>QListWidget</extends>
    <header>plexdesktop.browserlist.h</header>
+  </customwidget>
+  <customwidget>
+   <class>TrackSelector</class>
+   <extends>QComboBox</extends>
+   <header>plexdesktop.extra_widgets.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

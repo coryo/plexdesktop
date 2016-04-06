@@ -106,20 +106,20 @@ class Ui_Player(object):
         self.btn_next.setFocusPolicy(QtCore.Qt.NoFocus)
         self.btn_next.setObjectName("btn_next")
         self.horizontalLayout_3.addWidget(self.btn_next)
-        self.video_tracks = QtWidgets.QComboBox(self.control_bar)
+        self.video_tracks = TrackSelector(self.control_bar)
         font = QtGui.QFont()
         font.setPointSize(7)
         self.video_tracks.setFont(font)
         self.video_tracks.setObjectName("video_tracks")
         self.horizontalLayout_3.addWidget(self.video_tracks)
-        self.audio_tracks = QtWidgets.QComboBox(self.control_bar)
+        self.audio_tracks = TrackSelector(self.control_bar)
         font = QtGui.QFont()
         font.setPointSize(7)
         self.audio_tracks.setFont(font)
         self.audio_tracks.setFocusPolicy(QtCore.Qt.NoFocus)
         self.audio_tracks.setObjectName("audio_tracks")
         self.horizontalLayout_3.addWidget(self.audio_tracks)
-        self.sub_tracks = QtWidgets.QComboBox(self.control_bar)
+        self.sub_tracks = TrackSelector(self.control_bar)
         font = QtGui.QFont()
         font.setPointSize(7)
         self.sub_tracks.setFont(font)
@@ -176,3 +176,4 @@ class Ui_Player(object):
         self.btn_playlist.setText(_translate("Player", "v"))
 
 from plexdesktop.browserlist import ListView
+from plexdesktop.extra_widgets import TrackSelector
