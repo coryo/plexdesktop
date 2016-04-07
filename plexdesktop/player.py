@@ -1,3 +1,4 @@
+import platform
 import logging
 from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow, QAction, QMenu
 from PyQt5.QtCore import pyqtSignal, Qt, QThread, QPoint, QSize, QObject, QTimer
@@ -52,8 +53,7 @@ class PlayerUI(QWidget):
 
         self.ui.player_widget.setAttribute(Qt.WA_DontCreateNativeAncestors)
         self.ui.player_widget.setAttribute(Qt.WA_NativeWindow)
-
-
+        self.ui.player_widget.setMouseTracking(True)
 
 
 class MPVPlayer(QMainWindow):
@@ -116,7 +116,6 @@ class MPVPlayer(QMainWindow):
         self._timeline_thread.start()
 
         # cursor hiding
-        self.ui.player_widget.setMouseTracking(True)
         self.setMouseTracking(True)
         self.cursor_timer = QTimer()
         self.cursor_timer.setSingleShot(True)
@@ -231,8 +230,6 @@ class MPVPlayer(QMainWindow):
             self._event_handlers[eventid](event)
 
     def do_file_loaded(self, event):
-        if self.current_item.in_progress and self.current_item.view_offset > 0:
-            self.seek(self.current_item.view_offset / 1000.0)
         self.playback_started.emit()
 
     def do_end_file(self, event):
@@ -242,9 +239,7 @@ class MPVPlayer(QMainWindow):
         if item is not None:
             self.current_item = item
             self.next_item = None
-            url = item.resolve_url()
-            logger.info('Player: next url: ' + url)
-            self.mpv.play(url)
+            self.play(item)
 
     def do_log_message(self, event):
         try:
@@ -255,11 +250,15 @@ class MPVPlayer(QMainWindow):
             mpv_logger.warning('mpv log error: {}'.format(event))
 
     def do_shutdown(self, event):
-        logger.info('Player: exiting mpv player')
-        del self.mpv
+        logger.info('Player: mpv_detach_destroy')
+        self.mpv.detach_destroy()
         self.settings.setValue('last_volume', self.ui.slider_volume.value())
+        logger.info('Player: exiting event thread')
         self._event_thread.quit()
         self._event_thread.wait()
+        logger.info('Player: exiting timeline thread')
+        self._timeline_thread.quit()
+        self._timeline_thread.wait()
         self.player_stopped.emit()
 
     def do_pause(self, event):
@@ -334,13 +333,14 @@ class MPVPlayer(QMainWindow):
     def play(self, media_object):
         self.setWindowTitle(title(media_object))
 
-        self.play_queue = plexdevices.PlayQueue.create(media_object, self.headers)
+        if not self.play_queue:
+            self.play_queue = plexdevices.PlayQueue.create(media_object, self.headers)
+            self.ui.playlist.add_container2(self.play_queue)
+
         logger.info('Player: playQueueID={}'.format(self.play_queue.id))
         self.current_item = (self.play_queue.selected_item
                              if self.play_queue.selected_item is not None
                              else media_object)
-
-        self.ui.playlist.add_container2(self.play_queue)
 
         if self.current_item.duration > 0:
             self.update_total_time(self.current_item.duration)
@@ -359,12 +359,22 @@ class MPVPlayer(QMainWindow):
                 return
 
         logger.info('Player: playing url: ' + url)
-        self.mpv.play(url)
+
+        args = {}
+        if self.current_item.view_offset:
+            args['start'] = '+{}'.format(self.current_item.view_offset / 1000.0)
+        if isinstance(self.current_item, plexdevices.Track):
+            args['vid'] = 'no'
+
+        self.mpv.command_node('loadfile', url, 'replace', args)
 
     def pause(self):
         self.mpv.pause = not self.mpv.pause
 
     def seek(self, pos=None):
+        if platform.system() == 'Darwin':
+            # Seeking sometimes crashes OSX
+            return
         try:
             self.mpv.seek(pos if pos else self.ui.slider_progress.value() / 1000.0, 'absolute+exact')
             self.do_timeline_update('playing')
@@ -383,9 +393,8 @@ class MPVPlayer(QMainWindow):
 
     # QT EVENTS ################################################################
     def closeEvent(self, event):
+        self.do_timeline_update('stopped')
         self.mpv.quit()
-        self._timeline_thread.quit()
-        self._timeline_thread.wait()
 
     def wheelEvent(self, event):
         degrees = event.angleDelta().y() / 8

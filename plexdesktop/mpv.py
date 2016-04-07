@@ -369,15 +369,13 @@ class MPV:
         if self.handle:
             self.terminate()
 
-    def terminate(self):
+    def terminate_destroy(self):
         self.handle, handle = None, self.handle
         _mpv_terminate_destroy(handle)
 
-    def terminate_destroy(self):
-        _mpv_terminate_destroy(self.handle)
-
     def detach_destroy(self):
-        _mpv_detach_destroy(self.handle)
+        self.handle, handle = None, self.handle
+        _mpv_detach_destroy(handle)
 
     def request_log_messages(self, level):
         _mpv_request_log_messages(self.handle, level.encode())
@@ -535,7 +533,7 @@ class MPV:
         elif mpv_format == MpvFormat.FLAG:
             val.value = int(value)
         elif mpv_format == MpvFormat.INT64:
-            val.value = int(res)
+            val.value = int(value)
         elif mpv_format == MpvFormat.DOUBLE:
             val.value = float(value)
         elif mpv_format == MpvFormat.NODE:
@@ -544,12 +542,12 @@ class MPV:
 
 
 ALL_PROPERTIES = {
-    'aid':                         (MpvFormat.STRING, 'rw'),
+    'aid':                         (MpvFormat.INT64,  'rw'),
     'angle':                       (MpvFormat.INT64,  'rw'),
     'ass-style-override':          (MpvFormat.STRING, 'rw'),
     'ass-use-margins':             (MpvFormat.FLAG,   'rw'),
     'ass-vsfilter-aspect-compat':  (MpvFormat.FLAG,   'rw'),
-    'audio':                       (MpvFormat.STRING, 'rw'), # alias for aid
+    'audio':                       (MpvFormat.INT64, 'rw'), # alias for aid
     'audio-bitrate':               (MpvFormat.DOUBLE, 'r'),
     'audio-channels':              (MpvFormat.STRING, 'r'),
     'audio-codec':                 (MpvFormat.STRING, 'r'),
@@ -591,6 +589,7 @@ ALL_PROPERTIES = {
     'hr-seek':                     (MpvFormat.FLAG,   'rw'),
     'hue':                         (MpvFormat.INT64,  'rw'),
     'hwdec':                       (MpvFormat.FLAG,   'rw'),
+    'idle':                        (MpvFormat.FLAG,   'r'),
     'length':                      (MpvFormat.DOUBLE, 'r'),
     'loop':                        (MpvFormat.STRING, 'rw'),
     'loop-file':                   (MpvFormat.STRING, 'rw'),
@@ -618,12 +617,12 @@ ALL_PROPERTIES = {
     'saturation':                  (MpvFormat.INT64,  'rw'),
     'secondary-sid':               (MpvFormat.STRING, 'rw'),
     'seekable':                    (MpvFormat.FLAG,   'r'),
-    'sid':                         (MpvFormat.STRING, 'rw'),
+    'sid':                         (MpvFormat.INT64, 'rw'),
     'speed':                       (MpvFormat.DOUBLE, 'rw'),
     'stream-capture':              (MpvFormat.STRING, 'rw'),
     'stream-end':                  (MpvFormat.INT64,  'r'),
     'stream-pos':                  (MpvFormat.INT64,  'rw'),
-    'sub':                         (MpvFormat.STRING, 'rw'), # alias for sid
+    'sub':                         (MpvFormat.INT64, 'rw'), # alias for sid
     'sub-delay':                   (MpvFormat.DOUBLE, 'rw'),
     'sub-forced-only':             (MpvFormat.FLAG,   'rw'),
     'sub-pos':                     (MpvFormat.INT64,  'rw'),
@@ -637,8 +636,8 @@ ALL_PROPERTIES = {
     'tv-contrast':                 (MpvFormat.INT64,  'rw'),
     'tv-hue':                      (MpvFormat.INT64,  'rw'),
     'tv-saturation':               (MpvFormat.INT64,  'rw'),
-    'vid':                         (MpvFormat.STRING, 'rw'),
-    'video':                       (MpvFormat.STRING, 'rw'), # alias for vid
+    'vid':                         (MpvFormat.INT64,  'rw'),
+    'video':                       (MpvFormat.INT64, 'rw'), # alias for vid
     'video-align-x':               (MpvFormat.DOUBLE, 'rw'),
     'video-align-y':               (MpvFormat.DOUBLE, 'rw'),
     'video-aspect':                (MpvFormat.STRING, 'rw'),
@@ -698,10 +697,10 @@ class NodeBuilder(object):
             dst.string = src.encode()
         elif src_t is bool:
             dst.format.value = MpvFormat.FLAG
-            dst.flag.value = int(src)
+            dst.flag = int(src)
         elif src_t is int:
             dst.format.value = MpvFormat.INT64
-            dst.int64.value = src
+            dst.int64 = src
         elif src_t is float:
             dst.format.value = MpvFormat.DOUBLE
             dst.double_ = src

@@ -18,6 +18,8 @@ class TrackSelector(QComboBox):
         self.tracks = [t for t in tracks if t['type'] == self.ttype]
         old_state = self.blockSignals(True)
         self.clear()
+        if self.ttype == 'sub':
+            self.addItem('None', -1)
         for track in self.tracks:
             tid = track['id']
             display_name = (track.get('lang', '') + ' ({})'.format(track['codec'])).strip()
