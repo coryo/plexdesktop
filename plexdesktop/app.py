@@ -36,7 +36,8 @@ def run():
             },
             'plexdesktop.mpv': {
                 'handlers': ['h'],
-                'level': logging.INFO
+                'level': logging.INFO,
+                'propagate': False
             },
             'plexdevices.device': {
                 'handlers': ['h'],
