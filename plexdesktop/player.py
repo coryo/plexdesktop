@@ -273,9 +273,9 @@ class MPVPlayer(QMainWindow):
         try:
             last_vol = self.settings.value('last_volume', 0.0)
             self.mpv.volume = last_vol
-            self.ui.controls.slider_volume.setValue(last_vol * 10)
-        except Exception:
-            pass
+            self.ui.controls.slider_volume.setValue(int(last_vol))
+        except Exception as e:
+            logger.error('restore volume: {}'.format(e))
 
         self.mpv.next_item.connect(self.play)
 
@@ -395,7 +395,7 @@ class MPVPlayer(QMainWindow):
     # QT EVENTS ################################################################
     def closeEvent(self, event):
         self.playlist.close()
-        self.settings.setValue('last_volume', self.ui.controls.slider_volume.value() / 10.0)
+        self.settings.setValue('last_volume', self.ui.controls.slider_volume.value())
         self.mpv.quit()
 
     def wheelEvent(self, event):
