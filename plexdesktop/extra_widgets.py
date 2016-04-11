@@ -1,15 +1,17 @@
 from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
                              QCheckBox, QComboBox, QLineEdit)
-from PyQt5.QtCore import Qt, QSize, QBuffer
+from PyQt5.QtCore import Qt, QSize, QBuffer, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImageReader, QTransform
 from plexdesktop.ui.login_ui import Ui_Login
 
 
 class TrackSelector(QComboBox):
+    trackChanged = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tracks = []
+        self.currentIndexChanged.connect(self.track_changed)
 
     def set_type(self, ttype):
         self.ttype = ttype
@@ -19,13 +21,17 @@ class TrackSelector(QComboBox):
         old_state = self.blockSignals(True)
         self.clear()
         if self.ttype == 'sub':
-            self.addItem('None', -1)
+            self.addItem('None', '-1')
         for track in self.tracks:
             tid = track['id']
-            display_name = (track.get('lang', '') + ' ({})'.format(track['codec'])).strip()
-            self.addItem(display_name, tid)
+            display_name = (track.get('lang', track.get('title', '')) + ' ({})'.format(track['codec'])).strip()
+            self.addItem(display_name, str(tid))
         self.setVisible(self.count() > 1)
         self.blockSignals(old_state)
+
+    def track_changed(self, index):
+        tid = self.itemData(index)
+        self.trackChanged.emit(tid)
 
 
 class AspectRatioLabel(QLabel):

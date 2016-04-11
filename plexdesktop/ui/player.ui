@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>566</width>
-    <height>134</height>
+    <width>530</width>
+    <height>159</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -244,6 +244,9 @@
               <pointsize>7</pointsize>
              </font>
             </property>
+            <property name="sizeAdjustPolicy">
+             <enum>QComboBox::AdjustToContents</enum>
+            </property>
            </widget>
           </item>
           <item>
@@ -256,6 +259,9 @@
             <property name="focusPolicy">
              <enum>Qt::NoFocus</enum>
             </property>
+            <property name="sizeAdjustPolicy">
+             <enum>QComboBox::AdjustToContents</enum>
+            </property>
            </widget>
           </item>
           <item>
@@ -267,6 +273,9 @@
             </property>
             <property name="focusPolicy">
              <enum>Qt::NoFocus</enum>
+            </property>
+            <property name="sizeAdjustPolicy">
+             <enum>QComboBox::AdjustToContents</enum>
             </property>
            </widget>
           </item>
@@ -302,27 +311,6 @@
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QPushButton" name="btn_playlist">
-            <property name="maximumSize">
-             <size>
-              <width>30</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="font">
-             <font>
-              <pointsize>7</pointsize>
-             </font>
-            </property>
-            <property name="focusPolicy">
-             <enum>Qt::NoFocus</enum>
-            </property>
-            <property name="text">
-             <string>v</string>
-            </property>
-           </widget>
-          </item>
          </layout>
         </item>
        </layout>
@@ -343,33 +331,9 @@
      </property>
     </spacer>
    </item>
-   <item>
-    <widget class="ListView" name="playlist">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>1</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="sizeIncrement">
-      <size>
-       <width>0</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="contextMenuPolicy">
-      <enum>Qt::CustomContextMenu</enum>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>ListView</class>
-   <extends>QListWidget</extends>
-   <header>plexdesktop.browserlist.h</header>
-  </customwidget>
   <customwidget>
    <class>TrackSelector</class>
    <extends>QComboBox</extends>

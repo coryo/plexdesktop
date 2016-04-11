@@ -273,9 +273,6 @@ class Browser(QMainWindow):
     def create_player(self):
         self.mpvplayer = MPVPlayer()
         self.mpvplayer.show()
-        self.ui.indicator.show()
-        self.mpvplayer.playback_started.connect(self.ui.indicator.hide)
-        self.mpvplayer.player_stopped.connect(self.ui.indicator.hide)
 
     def destroy_player(self):
         logger.debug('Browser: deleting mpv player.')
@@ -599,7 +596,7 @@ class Browser(QMainWindow):
             menu.exec_(QCursor.pos())
 
     def cm_queue(self):
-        self.mpvplayer.playlist_queue_item(self.sender().data())
+        self.mpvplayer.queue(self.sender().data())
 
     def cm_copy(self):
         url = self.sender().data().resolve_url()

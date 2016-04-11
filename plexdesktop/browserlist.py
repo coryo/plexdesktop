@@ -164,7 +164,9 @@ class ListModel(QAbstractListModel):
 
     def set_container2(self, container):
         self.beginResetModel()
+        self._thumb_worker.work = False
         self.container = None
+        DB_THUMB.commit()
         self._add_container(container)
 
     def set_container(self, server, key, page=0, size=50, sort="", params={}):
@@ -287,6 +289,7 @@ class ListView(QListView):
 
     def add_container2(self, container):
         self.model().set_container2(container)
+        self.visibleItemsChanged()
 
     def double_click(self, index):
         self.itemDoubleClicked.emit(index.data(role=Qt.UserRole))
@@ -309,7 +312,8 @@ class ListView(QListView):
         self.setCurrentIndex(index)
 
     def closeEvent(self, event):
-        self.closed.emit()
+        # self.closed.emit()
+        self.model()._stop_thread()
         super().closeEvent(event)
 
     def resizeEvent(self, event):
