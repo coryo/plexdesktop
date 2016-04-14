@@ -17,16 +17,15 @@ if sys.platform == "win32":
 options = {
     'build_exe': {
         "include_files": [
-            (requests.certs.where(), 'resources/cacert.pem'),
-            ('mpv-1.dll', 'mpv-1.dll'),
-            ('resources/plexdesktop.qss', 'resources/plexdesktop.qss')
+            (requests.certs.where(), 'cacert.pem'),
+            ('mpv-1.dll', 'mpv-1.dll')
         ],
         'optimize': 2
     }
 }
 
 executables = [
-    Executable('main.py', base=base, targetName=EXE, icon='resources/icon.ico')
+    Executable('main.py', base=base, targetName=EXE, icon='icon.ico')
 ]
 
 setup(
