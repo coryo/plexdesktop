@@ -4,13 +4,15 @@ import logging
 import pickle
 from logging.config import dictConfig
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QFile
 from plexdesktop.browser import Browser
 import plexdevices
+import plexdesktop.ui.resources_rc
 
 
 def run():
     # for cx_Freeze and requests ssl issues
-    os.environ["REQUESTS_CA_BUNDLE"] = os.path.join(os.getcwd(), "resources", "cacert.pem")
+    os.environ["REQUESTS_CA_BUNDLE"] = os.path.join(os.getcwd(), "cacert.pem")
     # mpv on ubuntu
     os.environ["LC_NUMERIC"] = "C"
     # Logging
@@ -64,8 +66,10 @@ def run():
         pass
     logger.info("Application Started")
     app = QApplication(sys.argv)
-    with open('resources/plexdesktop.qss', 'r') as stylesheet:
-        app.setStyleSheet(stylesheet.read())
+    file = QFile(':/resources/plexdesktop.qss')
+    file.open(QFile.ReadOnly)
+    ss = bytes(file.readAll()).decode('latin-1')
+    app.setStyleSheet(ss)
     form = Browser()
     form.show()
     sys.exit(app.exec_())

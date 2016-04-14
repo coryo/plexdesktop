@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>530</width>
-    <height>159</height>
+    <height>62</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -179,7 +179,11 @@
              </font>
             </property>
             <property name="text">
-             <string>pp</string>
+             <string/>
+            </property>
+            <property name="icon">
+             <iconset resource="../resources.qrc">
+              <normaloff>:/images/light/glyphicons-play.png</normaloff>:/images/light/glyphicons-play.png</iconset>
             </property>
            </widget>
           </item>
@@ -206,7 +210,11 @@
              <enum>Qt::NoFocus</enum>
             </property>
             <property name="text">
-             <string>&lt;</string>
+             <string/>
+            </property>
+            <property name="icon">
+             <iconset resource="../resources.qrc">
+              <normaloff>:/images/light/glyphicons-chevron-left.png</normaloff>:/images/light/glyphicons-chevron-left.png</iconset>
             </property>
            </widget>
           </item>
@@ -233,7 +241,11 @@
              <enum>Qt::NoFocus</enum>
             </property>
             <property name="text">
-             <string>&gt;</string>
+             <string/>
+            </property>
+            <property name="icon">
+             <iconset resource="../resources.qrc">
+              <normaloff>:/images/light/glyphicons-chevron-right.png</normaloff>:/images/light/glyphicons-chevron-right.png</iconset>
             </property>
            </widget>
           </item>
@@ -340,6 +352,8 @@
    <header>plexdesktop.extra_widgets.h</header>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="../resources.qrc"/>
+ </resources>
  <connections/>
 </ui>

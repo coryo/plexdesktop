@@ -8,7 +8,7 @@ from plexdesktop.settings import Settings
 logger = logging.getLogger('plexdesktop')
 
 
-class PlexRemote(QObject, plexdevices.Remote):
+class PlexRemote(QObject, plexdevices.remote.Remote):
     """subclass plexdevices.Remote and QObject to add signal"""
     timeline_signal = pyqtSignal(str)
 

@@ -25,7 +25,7 @@ class ImgWorker(QObject):
 
 
 class PhotoViewer(QWidget):
-    operate = pyqtSignal(plexdevices.BaseObject)
+    operate = pyqtSignal(plexdevices.media.BaseObject)
     closed = pyqtSignal()
     prev_button = pyqtSignal()
     next_button = pyqtSignal()

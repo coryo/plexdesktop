@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Player(object):
     def setupUi(self, Player):
         Player.setObjectName("Player")
-        Player.resize(530, 159)
+        Player.resize(530, 62)
         self.verticalLayout = QtWidgets.QVBoxLayout(Player)
         self.verticalLayout.setSizeConstraint(QtWidgets.QLayout.SetDefaultConstraint)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -78,6 +78,10 @@ class Ui_Player(object):
         font = QtGui.QFont()
         font.setPointSize(7)
         self.btn_play.setFont(font)
+        self.btn_play.setText("")
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/images/light/glyphicons-play.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.btn_play.setIcon(icon)
         self.btn_play.setObjectName("btn_play")
         self.horizontalLayout_3.addWidget(self.btn_play)
         self.btn_prev = QtWidgets.QPushButton(self.control_bar)
@@ -91,6 +95,10 @@ class Ui_Player(object):
         font.setPointSize(7)
         self.btn_prev.setFont(font)
         self.btn_prev.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.btn_prev.setText("")
+        icon1 = QtGui.QIcon()
+        icon1.addPixmap(QtGui.QPixmap(":/images/light/glyphicons-chevron-left.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.btn_prev.setIcon(icon1)
         self.btn_prev.setObjectName("btn_prev")
         self.horizontalLayout_3.addWidget(self.btn_prev)
         self.btn_next = QtWidgets.QPushButton(self.control_bar)
@@ -104,6 +112,10 @@ class Ui_Player(object):
         font.setPointSize(7)
         self.btn_next.setFont(font)
         self.btn_next.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.btn_next.setText("")
+        icon2 = QtGui.QIcon()
+        icon2.addPixmap(QtGui.QPixmap(":/images/light/glyphicons-chevron-right.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.btn_next.setIcon(icon2)
         self.btn_next.setObjectName("btn_next")
         self.horizontalLayout_3.addWidget(self.btn_next)
         self.video_tracks = TrackSelector(self.control_bar)
@@ -155,8 +167,6 @@ class Ui_Player(object):
         _translate = QtCore.QCoreApplication.translate
         Player.setWindowTitle(_translate("Player", "Form"))
         self.lbl_divider.setText(_translate("Player", "/"))
-        self.btn_play.setText(_translate("Player", "pp"))
-        self.btn_prev.setText(_translate("Player", "<"))
-        self.btn_next.setText(_translate("Player", ">"))
 
 from plexdesktop.extra_widgets import TrackSelector
+from . import resources_rc

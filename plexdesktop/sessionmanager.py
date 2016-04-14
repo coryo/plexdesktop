@@ -13,7 +13,7 @@ class SessionManager(QObject):
 
     def __init__(self):
         super().__init__()
-        self.session = plexdevices.Session()
+        self.session = plexdevices.create_session()
 
     @property
     def user(self):
@@ -55,7 +55,7 @@ class SessionManager(QObject):
         settings = Settings()
         try:
             logger.debug('SessionManager: creating session')
-            self.session = plexdevices.Session(user=user, password=passwd)
+            self.session = plexdevices.create_session(user=user, password=passwd)
         except plexdevices.PlexTVError as e:
             logger.error('SessionManager: create_session: ' + str(e))
             self.done.emit(False, str(e))
@@ -95,7 +95,7 @@ class SessionManager(QObject):
         settings.remove('session')
         settings.remove('user')
         settings.remove('last_server')
-        self.session = plexdevices.Session()
+        self.session = plexdevices.create_session()
         self.active.emit(False)
 
     def switch_server(self, server):

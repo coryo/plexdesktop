@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>425</width>
-    <height>289</height>
+    <width>344</width>
+    <height>368</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -31,6 +31,9 @@
      <number>4</number>
     </property>
     <item>
+     <widget class="HubSearch" name="hub_search"/>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <property name="spacing">
        <number>0</number>
@@ -45,7 +48,7 @@
         </property>
         <property name="maximumSize">
          <size>
-          <width>30</width>
+          <width>16777215</width>
           <height>16777215</height>
          </size>
         </property>
@@ -55,39 +58,31 @@
          </font>
         </property>
         <property name="text">
-         <string>&lt;</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="../resources.qrc">
+          <normaloff>:/images/light/glyphicons-chevron-left.png</normaloff>:/images/light/glyphicons-chevron-left.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>16</width>
+          <height>16</height>
+         </size>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_reload">
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
-        <property name="font">
-         <font>
-          <pointsize>7</pointsize>
-         </font>
-        </property>
-        <property name="text">
-         <string>R</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_home">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
         </property>
         <property name="maximumSize">
          <size>
-          <width>50</width>
+          <width>16777215</width>
           <height>16777215</height>
          </size>
         </property>
@@ -97,7 +92,51 @@
          </font>
         </property>
         <property name="text">
-         <string>home</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="../resources.qrc">
+          <normaloff>:/images/light/glyphicons-refresh.png</normaloff>:/images/light/glyphicons-refresh.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>16</width>
+          <height>16</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_home">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="../resources.qrc">
+          <normaloff>:/images/light/glyphicons-home.png</normaloff>:/images/light/glyphicons-home.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>16</width>
+          <height>16</height>
+         </size>
         </property>
        </widget>
       </item>
@@ -170,6 +209,18 @@
         </property>
         <property name="text">
          <string>channels</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_hubs">
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>hubs</string>
         </property>
        </widget>
       </item>
@@ -289,14 +340,14 @@
       <item>
        <widget class="QPushButton" name="btn_view_mode">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
         </property>
         <property name="maximumSize">
          <size>
-          <width>20</width>
+          <width>16777215</width>
           <height>16777215</height>
          </size>
         </property>
@@ -306,7 +357,11 @@
          </font>
         </property>
         <property name="text">
-         <string>::</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="../resources.qrc">
+          <normaloff>:/images/light/glyphicons-list.png</normaloff>:/images/light/glyphicons-list.png</iconset>
         </property>
        </widget>
       </item>
@@ -456,7 +511,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>425</width>
+     <width>344</width>
      <height>21</height>
     </rect>
    </property>
@@ -470,6 +525,7 @@
     <property name="title">
      <string>&amp;Edit</string>
     </property>
+    <addaction name="actionFind"/>
     <addaction name="actionPreferences"/>
     <addaction name="actionReload_Stylesheet"/>
     <addaction name="actionTrim_Image_Cache"/>
@@ -571,6 +627,19 @@
     <string>Refresh Users...</string>
    </property>
   </action>
+  <action name="actionSearch">
+   <property name="text">
+    <string>Search</string>
+   </property>
+  </action>
+  <action name="actionFind">
+   <property name="text">
+    <string>Find...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -578,7 +647,14 @@
    <extends>QListWidget</extends>
    <header>plexdesktop.browserlist.h</header>
   </customwidget>
+  <customwidget>
+   <class>HubSearch</class>
+   <extends>QLineEdit</extends>
+   <header>plexdesktop.extra_widgets.h</header>
+  </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="../resources.qrc"/>
+ </resources>
  <connections/>
 </ui>

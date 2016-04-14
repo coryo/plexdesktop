@@ -1,8 +1,38 @@
 from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
-                             QCheckBox, QComboBox, QLineEdit)
+                             QCheckBox, QComboBox, QLineEdit, QAction)
 from PyQt5.QtCore import Qt, QSize, QBuffer, pyqtSignal
-from PyQt5.QtGui import QPixmap, QImageReader, QTransform
+from PyQt5.QtGui import QPixmap, QImageReader, QTransform, QIcon, QColor, QPainter
 from plexdesktop.ui.login_ui import Ui_Login
+
+
+class HubSearch(QLineEdit):
+    focus_in = pyqtSignal()
+    hide_results = pyqtSignal()
+    cancel = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        new_size = self.height() * 0.4
+        size = QSize(new_size, new_size)
+
+        self.search_icon = QIcon(QPixmap(':/images/light/glyphicons-search.png').scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.cancel_icon = QIcon(QPixmap(':/images/light/cancel.png').scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+        self.close_action = QAction(self)
+        self.close_action.setIcon(self.cancel_icon)
+        self.close_action.triggered.connect(self.cancel.emit)
+        self.close_action.triggered.connect(self.clear)
+
+        self.addAction(self.close_action, QLineEdit.TrailingPosition)
+        self.addAction(self.search_icon, QLineEdit.LeadingPosition)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.clear()
+            self.cancel.emit()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
 
 class TrackSelector(QComboBox):
