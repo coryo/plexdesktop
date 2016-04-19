@@ -6,6 +6,8 @@ from logging.config import dictConfig
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QFile
 from plexdesktop.browser import Browser
+from plexdesktop.style import STYLE
+from plexdesktop.settings import Settings
 import plexdevices
 import plexdesktop.ui.resources_rc
 
@@ -13,8 +15,6 @@ import plexdesktop.ui.resources_rc
 def run():
     # for cx_Freeze and requests ssl issues
     os.environ["REQUESTS_CA_BUNDLE"] = os.path.join(os.getcwd(), "cacert.pem")
-    # mpv on ubuntu
-    os.environ["LC_NUMERIC"] = "C"
     # Logging
     logging_config = {
         'version': 1,
@@ -66,10 +66,9 @@ def run():
         pass
     logger.info("Application Started")
     app = QApplication(sys.argv)
-    file = QFile(':/resources/plexdesktop.qss')
-    file.open(QFile.ReadOnly)
-    ss = bytes(file.readAll()).decode('latin-1')
-    app.setStyleSheet(ss)
+    os.environ["LC_NUMERIC"] = "C"
+    s = Settings()
+    STYLE.theme(s.value('theme', 'dark'))
     form = Browser()
     form.show()
     sys.exit(app.exec_())

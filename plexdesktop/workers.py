@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from queue import Queue
 from PyQt5.QtCore import QObject, Qt, pyqtSignal, QModelIndex
 from PyQt5.QtGui import QPixmap, QPixmapCache
 from plexdesktop.sqlcache import DB_THUMB
@@ -60,10 +61,7 @@ class ThumbWorker(QObject):
             self.finished.emit()
             return
         url = media_object.thumb
-        if url is None:
-            self.finished.emit()
-            return
-        if index.model().has_thumb(index):
+        if url is None or getattr(media_object, 'user_data', False):
             self.finished.emit()
             return
         key = media_object.container.server.client_identifier + url
@@ -79,3 +77,45 @@ class ThumbWorker(QObject):
             QPixmapCache.insert(key_hash, img)
         self.result_ready.emit(img, index)
         self.finished.emit()
+
+
+class QueueThumbWorker(QObject):
+    result_ready = pyqtSignal(QPixmap, QModelIndex)
+    finished = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.queue = Queue()
+
+    def wakeup(self):
+        while not self.queue.empty():
+            self.process(self.queue.get())
+        self.finished.emit()
+
+    def add(self, index):
+        self.queue.put(index)
+
+    def add_many(self, indexes):
+        for index in indexes:
+            self.add(index)
+
+    def process(self, index):
+        media_object = index.data(role=Qt.UserRole)
+        if media_object is None:
+            return
+        url = media_object.thumb
+        if url is None or getattr(media_object, 'user_data', False):
+            return
+        key = media_object.container.server.client_identifier + url
+        key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
+        img = QPixmapCache.find(key_hash)
+        if img is None:
+            img_data = DB_THUMB[url]
+            if img_data is None:  # not in cache, fetch from server
+                img_data = media_object.container.server.image(url, w=120, h=120)
+                DB_THUMB[url] = img_data
+            img = QPixmap()
+            img.loadFromData(img_data)
+            QPixmapCache.insert(key_hash, img)
+        self.result_ready.emit(img, index)
+

@@ -6,10 +6,11 @@ from PyQt5.QtGui import QCursor
 from plexdesktop.ui.player_ui import Ui_Player
 from plexdesktop.settings import Settings
 from plexdesktop.browserlist import PlaylistView
+from plexdesktop.style import STYLE
 import plexdesktop.utils as utils
 import mpv
 import plexdevices
-mpv.load_library()
+
 logger = logging.getLogger('plexdesktop')
 mpv_logger = logging.getLogger('plexdesktop.mpv')
 
@@ -199,6 +200,11 @@ class PlayerUI(QWidget):
         self.player = self.ui.player_widget
         self.control_bar = self.ui.control_bar
 
+        STYLE.widget.register(self.ui.btn_play, 'glyphicons-pause', 'glyphicons-play')
+        STYLE.widget.register(self.ui.btn_prev, 'glyphicons-chevron-left')
+        STYLE.widget.register(self.ui.btn_next, 'glyphicons-chevron-right')
+        STYLE.refresh()
+
     @pyqtSlot(float)
     def update_seek_slider_position(self, val):
         if not self.ui.slider_progress.isSliderDown():
@@ -237,6 +243,7 @@ class MPVPlayer(QMainWindow):
         menu_view.addAction(on_playlist)
 
         # MPV setup
+        mpv.load_library()
         wid = int(self.ui.player.winId())
         self.mpv = PlexMpv(self)
         self.mpv.initialize(wid=wid,

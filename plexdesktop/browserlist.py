@@ -2,15 +2,16 @@ import logging
 import os
 from threading import Thread
 from PyQt5.QtWidgets import (QListView, QStyledItemDelegate, QApplication,
-                             QAbstractItemView, QMenu, QAction, QFileDialog)
+                             QAbstractItemView, QMenu, QAction, QFileDialog,
+                             QInputDialog)
 from PyQt5.QtGui import (QPixmap, QPixmapCache, QCursor)
 from PyQt5.QtCore import (pyqtSignal, QObject, QSize, Qt, QThread,
                           QAbstractListModel, QModelIndex, QPoint, QVariant)
 from plexdesktop.sqlcache import DB_THUMB, DB_IMAGE
 from plexdesktop.utils import *
-from plexdesktop.workers import ThumbWorker, ContainerWorker
+from plexdesktop.workers import ContainerWorker, QueueThumbWorker
 from plexdesktop.extra_widgets import PreferencesObjectDialog
-from plexdesktop.delegates import ListDelegate
+from plexdesktop.delegates import ListDelegate, TileDelegate
 import plexdevices
 logger = logging.getLogger('plexdesktop')
 
@@ -23,23 +24,29 @@ class ListModel(QAbstractListModel):
     new_container_titles = pyqtSignal(str, str)
     new_container = pyqtSignal()
     new_page = pyqtSignal()
+    work_thumbs = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.container = None
         self.busy = False
+        # Container worker
         self._worker_thread = QThread()
-        self._thumb_queue = {}
-
         self._worker = ContainerWorker()
         self._worker.moveToThread(self._worker_thread)
         self._worker.result_ready.connect(self._add_container)
         self._worker.finished.connect(self._done)
-
         self.operate.connect(self._worker.run)
         self.operate.connect(self.working.emit)
-
         self._worker_thread.start()
+        # Thumbnail worker
+        self._thumb_thread = QThread()
+        self._thumb_worker = QueueThumbWorker()
+        self._thumb_worker.moveToThread(self._thumb_thread)
+        self._thumb_worker.result_ready.connect(self._update_thumb)
+        self._thumb_worker.finished.connect(DB_THUMB.commit)
+        self.work_thumbs.connect(self._thumb_worker.wakeup)
+        self._thumb_thread.start()
 
     def clear(self):
         self.beginResetModel()
@@ -49,6 +56,7 @@ class ListModel(QAbstractListModel):
     def quit(self):
         logger.debug('BrowserList: ListModel: stop thread')
         self._worker_thread.quit()
+        self._thumb_thread.quit()
         DB_THUMB.commit()
 
     def _done(self):
@@ -60,7 +68,9 @@ class ListModel(QAbstractListModel):
     def _add_container(self, container):
         if self.container is None:
             start_len = 0
+            self.beginInsertRows(QModelIndex(), 0, len(container) - 1)
             self.container = container
+            self.endInsertRows()
             self.endResetModel()
             self.new_container.emit()
         else:
@@ -70,31 +80,9 @@ class ListModel(QAbstractListModel):
             self.new_page.emit()
         self.busy = False
 
-    def request_thumbs(self, n, indexes):
-        queue = (i for i in indexes if i not in self._thumb_queue)
-        for index in queue:
-            worker = ThumbWorker(index)
-            worker.result_ready.connect(self._update_thumb)
-            worker.finished.connect(DB_THUMB.commit)
-            self._thumb_queue[index] = self.start_thumb_worker(worker)
-
-    def start_thumb_worker(self, worker):
-        thread = QThread()
-        worker.moveToThread(thread)
-        thread.started.connect(worker.start)
-        worker.finished.connect(thread.quit)
-        thread.finished.connect(self.remove_thumb_worker)
-        thread.worker = worker
-        thread.start()
-        return thread
-
-    def remove_thumb_worker(self):
-        worker = self.sender().worker
-        self._thumb_queue[worker.index].deleteLater()
-        worker.deleteLater()
-        self._thumb_queue[worker.index].worker = None
-        del self._thumb_queue[worker.index]
-        worker.index = None
+    def request_thumbs(self, indexes):
+        self._thumb_worker.add_many(indexes)
+        self.work_thumbs.emit()
 
     def _update_thumb(self, img, index):
         self.setData(index, img, role=Qt.DecorationRole)
@@ -142,12 +130,8 @@ class ListModel(QAbstractListModel):
             try:
                 img = self.container.children[index.row()].user_data
             except (AttributeError, IndexError):
-                img = None
-            if img is None:
                 img = QPixmap()
-            return (img if img.isNull() else
-                    self.container.children[index.row()].user_data.scaled(
-                        self.parent().iconSize(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            return img
 
     def setData(self, index, value, role):
         if index.data(role=Qt.UserRole) is None:
@@ -156,10 +140,13 @@ class ListModel(QAbstractListModel):
             index.data(role=Qt.UserRole).user_data = value
             self.dataChanged.emit(index, index, [Qt.DecorationRole])
             return True
+        elif role == Qt.UserRole:
+            self.dataChanged.emit(index, index)
+            return True
 
     def canFetchMore(self, index):
-        return (False if self.container is None or not len(self.container.children) else
-                len(self.container.children) < self.container.total_size)
+        return (False if self.container is None or not len(self.container) else
+                len(self.container) < self.container.total_size)
 
     def fetchMore(self, parent):
         start_len = len(self.container)
@@ -180,7 +167,7 @@ class ListModel(QAbstractListModel):
 
 class PlaylistView(QListView):
     itemSelectionChanged = pyqtSignal(list)
-    request_thumbs = pyqtSignal(int, object)
+    request_thumbs = pyqtSignal(object)
     play = pyqtSignal(plexdevices.media.BaseObject)
     remove = pyqtSignal(list)
 
@@ -200,7 +187,7 @@ class PlaylistView(QListView):
     def set_container(self, container):
         self.model().set_container(container)
         indexes = (self.model().index(i) for i in range(self.model().rowCount()))
-        self.request_thumbs.emit(self.model().rowCount(), indexes)
+        self.request_thumbs.emit(indexes)
 
     def icon_size(self, x):
         self.last_icon_size = QSize(x, x)
@@ -257,7 +244,7 @@ class ListView(QListView):
     itemDoubleClicked = pyqtSignal(plexdevices.media.BaseObject)
     itemSelectionChanged = pyqtSignal(plexdevices.media.BaseObject)
     container_request = pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
-    request_thumbs = pyqtSignal(int, object)
+    request_thumbs = pyqtSignal(object)
     goto_location = pyqtSignal(Location)
     queue = pyqtSignal(plexdevices.media.BaseObject)
     play = pyqtSignal(plexdevices.media.BaseObject)
@@ -274,9 +261,9 @@ class ListView(QListView):
         self.setModel(self._model)
         self._last_count = 0
         self._player_state, self._photo_viewer_state = False, False
-        self.delegate = ListDelegate(self)
-        self.delegate_default = QStyledItemDelegate()
-        self.setItemDelegate(self.delegate)
+        self.list_delegate = ListDelegate(self)
+        self.tile_delegate = TileDelegate(self)
+        self.setItemDelegate(self.list_delegate)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setResizeMode(QListView.Adjust)
         self.icon_size(32)
@@ -294,20 +281,38 @@ class ListView(QListView):
         self._model.working.connect(self.working.emit)
         self._model.done.connect(self.finished.emit)
         self._model.new_container_titles.connect(self.new_titles.emit)
+        self._model._thumb_worker.finished.connect(self._resize)
+        self._model.rowsInserted.connect(self.new_rows)
 
-    def minimumSizeHint(self):
-        return QSize(0, 0)
+        self.viewModeChanged.connect(self.visibleItemsChanged)
+
+        self._resize_hack = True
+
+    def new_rows(self, parent, first, last):
+        logger.debug('new_rows {} {} {}'.format(parent, first, last))
+
+    def _resize(self):
+        if self.viewMode() == QListView.ListMode:
+            return
+        self.resize(self.width() + 1 if self._resize_hack else self.width() - 1, self.height())
+        self._resize_hack = not self._resize_hack
+        self.updateGeometry()
 
     def closeEvent(self, event):
         self.model().quit()
         super().closeEvent(event)
 
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.ControlModifier:
+            event.ignore()
+        else:
+            super().wheelEvent(event)
+
     def resizeEvent(self, event):
         n, indexes = self.visible_items()
         if n != self._last_count:
-            logger.debug('request_thumbs')
             self._last_count = n
-            self.request_thumbs.emit(n, indexes)
+            self.request_thumbs.emit(indexes)
         super().resizeEvent(event)
 
     def clear(self):
@@ -315,11 +320,15 @@ class ListView(QListView):
 
     def toggle_view_mode(self):
         if self.viewMode() == QListView.ListMode:
+            self.setItemDelegate(self.tile_delegate)
             self.setViewMode(QListView.IconMode)
             self.bg_vertical = True
+            self.setSpacing(10)
         else:
+            self.setItemDelegate(self.list_delegate)
             self.setViewMode(QListView.ListMode)
             self.bg_vertical = False
+            self.setSpacing(0)
         self.setAlternatingRowColors(not self.bg_vertical)
         self.viewModeChanged.emit()
 
@@ -337,12 +346,13 @@ class ListView(QListView):
 
     def selectionChanged(self, selected, deselected):
         super().selectionChanged(selected, deselected)
-        self.itemSelectionChanged.emit(selected.indexes()[0].data(role=Qt.UserRole))
+        try:
+            self.itemSelectionChanged.emit(selected.indexes()[0].data(role=Qt.UserRole))
+        except IndexError:
+            pass
 
     def currentItem(self):
-        indexes = self.selectedIndexes()
-        if indexes:
-            return indexes[0].data(role=Qt.UserRole)
+        return self.currentIndex().data(role=Qt.UserRole)
 
     def next_item(self):
         index = self.moveCursor(QAbstractItemView.MoveDown, Qt.NoModifier)
@@ -354,7 +364,7 @@ class ListView(QListView):
 
     def visibleItemsChanged(self):
         n, indexes = self.visible_items()
-        self.request_thumbs.emit(n, indexes)
+        self.request_thumbs.emit(indexes)
 
     def visible_items(self):
         model = self.model()
@@ -378,7 +388,7 @@ class ListView(QListView):
     def search_prompt(self, item):
         text, ok = QInputDialog.getText(self, 'Search', 'query:')
         if ok:
-            self.goto_location(Location(item.key, params={'query': text}))
+            self.goto_location.emit(Location(item.key, params={'query': text}))
 
     def item_double_clicked(self, item):
         if isinstance(item, plexdevices.media.Directory):
@@ -406,9 +416,12 @@ class ListView(QListView):
             self.metadata_selection.emit(m)
 
     def context_menu(self, pos):
-        item = self.currentItem()
+        index = self.currentIndex()
+        item = index.data(role=Qt.UserRole)
+        # item = self.currentItem()
         if item is None:
             return
+        data = (item, index)
         menu = QMenu(self)
         actions = []
         if isinstance(item, plexdevices.media.MediaItem):
@@ -459,54 +472,58 @@ class ListView(QListView):
             actions.append(mark_action2)
 
         if item.has_parent:
-            open_action = QAction('goto: ' + plexdevices.get_type_string(item.parent_type), menu)
+            open_action = QAction('goto: ' + plexdevices.types.get_type_string(item.parent_type), menu)
             open_action.triggered.connect(self.cm_open_parent)
             actions.append(open_action)
         if item.has_grandparent:
-            open_action = QAction('goto: ' + plexdevices.get_type_string(item.grandparent_type), menu)
+            open_action = QAction('goto: ' + plexdevices.types.get_type_string(item.grandparent_type), menu)
             open_action.triggered.connect(self.cm_open_grandparent)
             actions.append(open_action)
 
         for action in actions:
-            action.setData(item)
+            action.setData(data)
             menu.addAction(action)
 
         if not menu.isEmpty():
             menu.exec_(QCursor.pos())
 
     def cm_queue(self):
-        self.queue.emit(self.sender().data())
+        self.queue.emit(self.sender().data()[0])
 
     def cm_copy(self):
-        url = self.sender().data().resolve_url()
+        url = self.sender().data()[0].resolve_url()
         QApplication.clipboard().setText(url)
 
     def cm_settings(self):
-        self.preferences_prompt(self.sender().data())
+        self.preferences_prompt(self.sender().data()[0])
 
     def cm_play(self):
-        self.play.emit(self.sender().data())
+        self.play.emit(self.sender().data()[0])
 
     def cm_play_photo(self):
-        self.photo.emit(self.sender().data())
+        self.photo.emit(self.sender().data()[0])
 
     def cm_open(self):
-        self.goto_location.emit(Location(self.sender().data().key))
+        self.goto_location.emit(Location(self.sender().data()[0].key))
 
     def cm_open_parent(self):
-        self.goto_location.emit(Location(self.sender().data().parent_key + '/children'))
+        self.goto_location.emit(Location(self.sender().data()[0].parent_key + '/children'))
 
     def cm_open_grandparent(self):
-        self.goto_location.emit(Location(self.sender().data().grandparent_key + '/children'))
+        self.goto_location.emit(Location(self.sender().data()[0].grandparent_key + '/children'))
 
     def cm_mark_watched(self):
-        self.sender().data().mark_watched()
+        item, index = self.sender().data()
+        item.mark_watched()
+        index.model().setData(index, None, Qt.UserRole)
 
     def cm_mark_unwatched(self):
-        self.sender().data().mark_unwatched()
+        item, index = self.sender().data()
+        item.mark_unwatched()
+        index.model().setData(index, None, Qt.UserRole)
 
     def cm_save_photo(self):
-        item = self.sender().data()
+        item = self.sender().data()[0]
         url = item.resolve_url()
         ext = url.split('?')[0].split('/')[-1].split('.')[-1]
         fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item.title]), ext)

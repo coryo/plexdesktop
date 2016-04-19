@@ -1,187 +1,124 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>PhotoViewer</class>
- <widget class="QWidget" name="PhotoViewer">
+ <widget class="QMainWindow" name="PhotoViewer">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>467</width>
-    <height>404</height>
+    <width>416</width>
+    <height>377</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>Photo Viewer</string>
   </property>
-  <property name="styleSheet">
-   <string notr="true"/>
-  </property>
-  <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing">
-    <number>2</number>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="AspectRatioLabel" name="image_label">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string/>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>416</width>
+     <height>21</height>
+    </rect>
    </property>
-   <property name="leftMargin">
-    <number>0</number>
+  </widget>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
    </property>
-   <property name="topMargin">
-    <number>0</number>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+   <addaction name="actionBack"/>
+   <addaction name="actionForward"/>
+   <addaction name="actionRotateLeft"/>
+   <addaction name="actionRotateRight"/>
+   <addaction name="actionRefresh"/>
+  </widget>
+  <action name="actionBack">
+   <property name="icon">
+    <iconset resource="../resources.qrc">
+     <normaloff>:/images/light/glyphicons-chevron-left.png</normaloff>:/images/light/glyphicons-chevron-left.png</iconset>
    </property>
-   <property name="rightMargin">
-    <number>0</number>
+   <property name="text">
+    <string>Back</string>
    </property>
-   <property name="bottomMargin">
-    <number>0</number>
+  </action>
+  <action name="actionForward">
+   <property name="icon">
+    <iconset resource="../resources.qrc">
+     <normaloff>:/images/light/glyphicons-chevron-right.png</normaloff>:/images/light/glyphicons-chevron-right.png</iconset>
    </property>
-   <item>
-    <widget class="QWidget" name="control_bar" native="true">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="styleSheet">
-      <string notr="true"/>
-     </property>
-     <layout class="QHBoxLayout" name="horizontalLayout">
-      <property name="spacing">
-       <number>2</number>
-      </property>
-      <property name="topMargin">
-       <number>0</number>
-      </property>
-      <property name="rightMargin">
-       <number>1</number>
-      </property>
-      <property name="bottomMargin">
-       <number>0</number>
-      </property>
-      <item>
-       <widget class="QPushButton" name="btn_prev">
-        <property name="text">
-         <string>&lt;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_next">
-        <property name="text">
-         <string>&gt;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_rotate_ccw">
-        <property name="text">
-         <string>&lt; 90°</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_rotate_cw">
-        <property name="text">
-         <string>90° &gt;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_refresh">
-        <property name="text">
-         <string>refresh</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QProgressBar" name="indicator">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
-        <property name="maximum">
-         <number>0</number>
-        </property>
-        <property name="value">
-         <number>-1</number>
-        </property>
-        <property name="textVisible">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <spacer name="horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QWidget" name="horizontalWidget" native="true">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">background-color:black;</string>
-     </property>
-     <layout class="QHBoxLayout" name="viewer">
-      <property name="spacing">
-       <number>0</number>
-      </property>
-      <property name="leftMargin">
-       <number>0</number>
-      </property>
-      <property name="topMargin">
-       <number>0</number>
-      </property>
-      <property name="rightMargin">
-       <number>0</number>
-      </property>
-      <property name="bottomMargin">
-       <number>0</number>
-      </property>
-      <item>
-       <widget class="AspectRatioLabel" name="image_label">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-  </layout>
+   <property name="text">
+    <string>Forward</string>
+   </property>
+  </action>
+  <action name="actionRotateLeft">
+   <property name="icon">
+    <iconset resource="../resources.qrc">
+     <normaloff>:/images/light/glyphicons-rotate-left.png</normaloff>:/images/light/glyphicons-rotate-left.png</iconset>
+   </property>
+   <property name="text">
+    <string>RotateLeft</string>
+   </property>
+  </action>
+  <action name="actionRotateRight">
+   <property name="icon">
+    <iconset resource="../resources.qrc">
+     <normaloff>:/images/light/glyphicons-rotate-right.png</normaloff>:/images/light/glyphicons-rotate-right.png</iconset>
+   </property>
+   <property name="text">
+    <string>RotateRight</string>
+   </property>
+  </action>
+  <action name="actionRefresh">
+   <property name="icon">
+    <iconset resource="../resources.qrc">
+     <normaloff>:/images/light/glyphicons-refresh.png</normaloff>:/images/light/glyphicons-refresh.png</iconset>
+   </property>
+   <property name="text">
+    <string>Refresh</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -190,6 +127,8 @@
    <header>plexdesktop.extra_widgets.h</header>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="../resources.qrc"/>
+ </resources>
  <connections/>
 </ui>

@@ -6,7 +6,7 @@ from PyQt5.QtGui import QCursor
 from plexdesktop.utils import Location, hub_title, timestamp_from_ms
 from plexdesktop.workers import ThumbWorker, ContainerWorker, HubWorker
 from plexdesktop.sqlcache import DB_THUMB
-from plexdesktop.delegates import HubDelegate
+from plexdesktop.delegates import ListDelegate
 import plexdevices
 logger = logging.getLogger('plexdesktop')
 
@@ -32,9 +32,12 @@ class TreeItem(object):
         return 1
 
     def data(self, column):
-        return [
-            hub_title(self.plex_item),  # display title
-        ][column]
+        try:
+            return [
+                hub_title(self.plex_item),  # display title
+            ][column]
+        except Exception:
+            return None
 
     def row(self):
         return self.parent.child_items.index(self) if self.parent is not None else 0
@@ -51,6 +54,11 @@ class TreeModel(QAbstractItemModel):
         self.setupModelData(data, self.root_item)
         self._thumb_queue = {}
         self._parent = parent
+
+    def clear(self):
+        self.beginResetModel()
+        self.root_item = TreeItem()
+        self.endResetModel()
 
     def index(self, row, column, parent=QModelIndex()):
         if not self.hasIndex(row, column, parent):
@@ -179,6 +187,8 @@ class TreeView(QTreeView):
     goto_location = pyqtSignal(Location)
     goto_hub = pyqtSignal(plexdevices.hubs.Hub)
     finished = pyqtSignal()
+    play = pyqtSignal(plexdevices.media.BaseObject)
+    play_photo = pyqtSignal(plexdevices.media.Photo)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -186,8 +196,9 @@ class TreeView(QTreeView):
         self.customContextMenuRequested.connect(self.context_menu)
         self.setItemsExpandable(False)
         self.doubleClicked.connect(self.double_click)
-        self.setIconSize(QSize(48, 48))
+        self.setIconSize(QSize(36, 36))
         self.setAlternatingRowColors(True)
+        self.setIndentation(10)
         self._model = None
 
         self._worker_thread = QThread()
@@ -196,18 +207,15 @@ class TreeView(QTreeView):
         self._worker.result_ready.connect(self._add_container)
         self.request_container.connect(self._worker.run)
         self._worker_thread.start()
-
-        self.delegate = HubDelegate(self)
+        self.delegate = ListDelegate(self)
         self.setItemDelegate(self.delegate)
-
         self.goto_hub.connect(self.load_hub)
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.close()
-            event.accept()
-        else:
-            event.ignore()
+    def quit(self):
+        self._worker_thread.quit()
+
+    def clear(self):
+        self.model().clear()
 
     def current_item(self):
         indexes = self.selectedIndexes()
@@ -222,8 +230,13 @@ class TreeView(QTreeView):
             return
         if not hasattr(item, 'key'):
             return
-        loc = Location(item.key)
-        self.goto_location.emit(loc)
+        if isinstance(item, (plexdevices.media.Movie, plexdevices.media.Episode, plexdevices.media.Track)):
+            self.play.emit(item)
+        elif isinstance(item, plexdevices.media.Photo):
+            self.play_photo.emit(item)
+        else:
+            loc = Location(item.key)
+            self.goto_location.emit(loc)
 
     def context_menu(self, pos):
         item = self.current_item()
@@ -235,30 +248,49 @@ class TreeView(QTreeView):
         menu = QMenu(self)
         actions = []
         if isinstance(item, plexdevices.media.MediaItem):
-            pass
+            action = QAction('play', menu)
+            action.setData(item)
+            if isinstance(item, (plexdevices.media.Movie, plexdevices.media.Episode, plexdevices.media.Track)):
+                action.triggered.connect(self.cm_play)
+            elif isinstance(item, plexdevices.media.Photo):
+                action.triggered.connect(self.cm_play_photo)
+            actions.append(action)
         elif isinstance(item, plexdevices.media.Directory):
+            if isinstance(item, plexdevices.media.Album):
+                action = QAction('play all', menu)
+                action.setData(item)
+                action.triggered.connect(self.cm_play)
+                actions.append(action)
+
             if hasattr(item, 'key'):
                 action = QAction('go', menu)
                 action.triggered.connect(self.cm_goto)
                 action.setData(Location(item.key))
                 actions.append(action)
 
-        if hasattr(item, 'parent_key'):
-            action = QAction('goto: ' + plexdevices.get_type_string(item.parent_type), menu)
-            action.triggered.connect(self.cm_goto)
-            action.setData(Location(item.parent_key))
-            actions.append(action)
-        if hasattr(item, 'grandparent_key'):
-            action = QAction('goto: ' + plexdevices.get_type_string(item.grandparent_type), menu)
-            action.triggered.connect(self.cm_goto)
-            action.setData(Location(item.grandparent_key))
-            actions.append(action)
+        if not isinstance(item, plexdevices.media.Photo):
+            if hasattr(item, 'parent_key'):
+                action = QAction('goto: ' + plexdevices.types.get_type_string(item.parent_type), menu)
+                action.triggered.connect(self.cm_goto)
+                action.setData(Location(item.parent_key + '/children'))
+                actions.append(action)
+            if hasattr(item, 'grandparent_key'):
+                action = QAction('goto: ' + plexdevices.types.get_type_string(item.grandparent_type), menu)
+                action.triggered.connect(self.cm_goto)
+                action.setData(Location(item.grandparent_key + '/children'))
+                actions.append(action)
 
         for action in actions:
             menu.addAction(action)
 
         if not menu.isEmpty():
             menu.exec_(QCursor.pos())
+
+    def cm_play(self):
+        self.play.emit(self.sender().data())
+
+    def cm_play_photo(self):
+        self.play_photo.emit(self.sender().data())
 
     def cm_goto(self, state):
         loc = self.sender().data()
@@ -281,16 +313,9 @@ class TreeView(QTreeView):
         self.setModel(self._model)
         self.header().hide()
         self.expandAll()
-        # self.resize(350, self.iconSize().height() * (self.model().total_rows() + 1))
 
-        logger.debug(self._model.total_rows())
-        if self._model.total_rows():
+        rows = self._model.total_rows()
+        logger.debug('Hub tree items: {}'.format(rows))
+        if rows:
             self.model().request_thumbs()
-            self.show()
         self.finished.emit()
-
-    @pyqtSlot()
-    def _show(self):
-        if self._model is not None:
-            self.show()
-            self.finished.emit()

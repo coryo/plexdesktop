@@ -16,15 +16,21 @@ class CacheConnection(sqlite3.Connection):
 
     def __getitem__(self, key):
         khash = hashlib.md5(key.encode('utf-8')).hexdigest()
-        data = self.execute('select value from cache where key = ?', (khash,))
+        try:
+            data = self.execute('select value from cache where key = ?', (khash,))
+        except sqlite3.InterfaceError:
+            return None
         r = data.fetchone()
-        return r[0] if r is not None else None
+        try:
+            return r[0]
+        except (IndexError, TypeError):
+            return None
 
     def __setitem__(self, key, value):
         try:
             self.execute('INSERT INTO cache (key, value) VALUES (?, ?)',
                          (hashlib.md5(key.encode('utf-8')).hexdigest(), value))
-        except (sqlite3.IntegrityError, sqlite3.OperationalError) as e:
+        except (sqlite3.IntegrityError, sqlite3.OperationalError, sqlite3.InterfaceError) as e:
             logger.error('SQLCache: sqlite3 error: ' + str(e))
 
     def createDB(self):

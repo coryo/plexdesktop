@@ -2,7 +2,9 @@ from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
                              QCheckBox, QComboBox, QLineEdit, QAction)
 from PyQt5.QtCore import Qt, QSize, QBuffer, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImageReader, QTransform, QIcon, QColor, QPainter
+from plexdesktop.style import STYLE
 from plexdesktop.ui.login_ui import Ui_Login
+from plexdesktop.settings import Settings
 
 
 class HubSearch(QLineEdit):
@@ -12,19 +14,22 @@ class HubSearch(QLineEdit):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        new_size = self.height() * 0.4
-        size = QSize(new_size, new_size)
+        """style is relying on object names so make sure they are set
+           before registering widgets"""
+        self.setObjectName('HubSearch')
 
-        self.search_icon = QIcon(QPixmap(':/images/light/glyphicons-search.png').scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.cancel_icon = QIcon(QPixmap(':/images/light/cancel.png').scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        search_action = QAction(self)
+        search_action.setObjectName('search_action')
+        close_action = QAction(self)
+        close_action.setObjectName('close_action')
+        close_action.triggered.connect(self.cancel.emit)
+        close_action.triggered.connect(self.clear)
 
-        self.close_action = QAction(self)
-        self.close_action.setIcon(self.cancel_icon)
-        self.close_action.triggered.connect(self.cancel.emit)
-        self.close_action.triggered.connect(self.clear)
+        self.addAction(search_action, QLineEdit.LeadingPosition)
+        self.addAction(close_action, QLineEdit.TrailingPosition)
 
-        self.addAction(self.close_action, QLineEdit.TrailingPosition)
-        self.addAction(self.search_icon, QLineEdit.LeadingPosition)
+        STYLE.widget.register(search_action, 'glyphicons-search')
+        STYLE.widget.register(close_action, 'cancel')
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
@@ -207,3 +212,27 @@ class LoginDialog(QDialog):
 
     def data(self):
         return (self.ui.username.text(), self.ui.password.text())
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        s = Settings()
+        self.setWindowTitle('Preferences')
+        self.form = QFormLayout(self)
+
+        i = QComboBox()
+        i.addItems(STYLE.themes.keys())
+        i.setCurrentIndex(i.findText(s.value('theme')))
+        self.form.addRow(QLabel('theme'), i)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.form.addRow(self.buttons)
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self.accept)
+
+        if self.exec_() == QDialog.Accepted:
+            s = Settings()
+            theme = i.currentText()
+            s.setValue('theme', theme)
+            STYLE.theme(theme)

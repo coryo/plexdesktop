@@ -181,9 +181,8 @@
             <property name="text">
              <string/>
             </property>
-            <property name="icon">
-             <iconset resource="../resources.qrc">
-              <normaloff>:/images/light/glyphicons-play.png</normaloff>:/images/light/glyphicons-play.png</iconset>
+            <property name="checkable">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
@@ -212,10 +211,6 @@
             <property name="text">
              <string/>
             </property>
-            <property name="icon">
-             <iconset resource="../resources.qrc">
-              <normaloff>:/images/light/glyphicons-chevron-left.png</normaloff>:/images/light/glyphicons-chevron-left.png</iconset>
-            </property>
            </widget>
           </item>
           <item>
@@ -242,10 +237,6 @@
             </property>
             <property name="text">
              <string/>
-            </property>
-            <property name="icon">
-             <iconset resource="../resources.qrc">
-              <normaloff>:/images/light/glyphicons-chevron-right.png</normaloff>:/images/light/glyphicons-chevron-right.png</iconset>
             </property>
            </widget>
           </item>
