@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QStyledItemDelegate, QApplication, QStyle,
                              QStyleOptionProgressBar, QProgressBar, QStyleOptionViewItem)
 from PyQt5.QtGui import (QPixmap, QBrush, QPixmapCache, QColor, QPalette, QFont,
-                         QFontMetrics, QPainter, QPen, QPolygon)
+                         QFontMetrics, QPainter, QPen, QPolygon, QTextLayout, QTextLine)
 from PyQt5.QtCore import QSize, Qt, QRect, QPoint
 from plexdesktop.utils import Location, hub_title, title, timestamp_from_ms
 import plexdevices
@@ -61,6 +61,32 @@ def draw_unwatched_indicator(plex_item, pixmap, size=0.20):
     p.drawPolygon(triangle)
 
 
+def elide_text(painter, rect, string):
+    """paint `string` with `painter` inside `rect`"""
+    font_metrics = painter.fontMetrics()
+    line_spacing = font_metrics.lineSpacing()
+    y = 0
+    text_layout = QTextLayout(string, painter.font())
+    text_layout.beginLayout()
+    while True:
+        line = text_layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(rect.width())
+        next_line_y = y + line_spacing
+        if rect.height() >= next_line_y + line_spacing:
+            line.draw(painter, QPoint(rect.left(), rect.top() + y))
+            y = next_line_y
+        else:
+            last_line = string[line.textStart():]
+            elided_last_line = font_metrics.elidedText(last_line, Qt.ElideRight, rect.width())
+            painter.drawText(QPoint(rect.left(),
+                                    rect.top() + y + font_metrics.ascent()),
+                             elided_last_line)
+            line = text_layout.createLine()
+            break
+
+
 class TileDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
@@ -77,19 +103,18 @@ class TileDelegate(QStyledItemDelegate):
         draw_progress_bar(item, scaled, height=6)
         draw_unwatched_indicator(item, scaled, size=0.20)
         QApplication.style().drawItemPixmap(painter, option.rect, Qt.AlignTop, scaled)
+
         # Title
         text_rect = QRect(option.rect.topLeft() + QPoint(0, icon_size.height()), option.rect.bottomRight())
         title_font = QFont(option.font.family(), 9, weight=QFont.Bold)
-        title_font_metrics = QFontMetrics(title_font)
         painter.save()
         painter.setBrush(option.palette.highlightedText() if option.state & QStyle.State_Selected
                          else option.palette.text())
         title_text = item.title
         painter.setFont(title_font)
-        QApplication.style().drawItemText(painter, text_rect,
-                                          Qt.AlignLeft | Qt.TextWordWrap,
-                                          option.palette, True, title_text)
+        elide_text(painter, text_rect, title_text)
         painter.restore()
+
         # Selection Frame
         if option.state & (QStyle.State_Selected | QStyle.State_MouseOver):
             thickness = 1
@@ -129,7 +154,7 @@ class ListDelegate(QStyledItemDelegate):
         item = index.data(role=Qt.UserRole)
         title_font = QFont(option.font.family(), 9, weight=QFont.Bold)
         title_font_metrics = QFontMetrics(title_font)
-        summary_font = QFont(option.font.family(), 7)
+        summary_font = QFont(option.font.family(), 8)
         summary_font_metrics = QFontMetrics(summary_font)
 
         if item.__class__.__name__ == 'HubsItem':
@@ -156,6 +181,7 @@ class ListDelegate(QStyledItemDelegate):
             QApplication.style().drawItemPixmap(painter, option.rect,
                                                 Qt.AlignLeft | Qt.AlignVCenter,
                                                 scaled)
+
         # Selection Frame
         if option.state & (QStyle.State_Selected | QStyle.State_MouseOver):
             thickness = 1
@@ -163,6 +189,7 @@ class ListDelegate(QStyledItemDelegate):
             painter.setPen(QPen(QBrush(QColor(204, 123, 25)), thickness, join=Qt.MiterJoin))
             painter.drawRect(QRect(option.rect.topLeft(), option.rect.bottomRight() - QPoint(1, 1)))
             painter.restore()
+
         # Title Line
         painter.save()
         if option.state & QStyle.State_Selected:
@@ -171,17 +198,24 @@ class ListDelegate(QStyledItemDelegate):
             painter.setBrush(option.palette.text())
         painter.setFont(title_font)
         title_rect = QRect(option.rect.topLeft() + QPoint(scaled.width() + 5, 0),
-                           option.rect.bottomRight())
-        title_rect = QApplication.style().itemTextRect(title_font_metrics,
-                                                       title_rect, Qt.AlignLeft,
-                                                       True, title_text)
-        QApplication.style().drawItemText(painter, title_rect,
-                                          Qt.AlignLeft | Qt.TextWordWrap,
-                                          option.palette, True, title_text)
+                           option.rect.topRight() + QPoint(0, painter.fontMetrics().height()))
+        elide_text(painter, title_rect, title_text)
         painter.restore()
+
+        # Summary text. wrap and elide
+        if hasattr(item, 'summary'):
+            summary_text = item.summary
+            painter.save()
+            if painter.pen().color().value() < 128:
+                painter.setPen(QPen(painter.pen().color().lighter()))
+            else:
+                painter.setPen(QPen(painter.pen().color().darker(150)))
+            painter.setFont(summary_font)
+            summary_rect = QRect(title_rect.bottomLeft(), option.rect.bottomRight())
+            elide_text(painter, summary_rect, summary_text)
+            painter.restore()
 
     def sizeHint(self, option, index):
         if isinstance(index.data(role=Qt.UserRole), plexdevices.hubs.Hub):
             return super().sizeHint(option, index)
         return QSize(300, self.parent().iconSize().height() + 2 * 2)
-
