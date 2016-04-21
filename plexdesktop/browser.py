@@ -484,7 +484,10 @@ class Browser(QMainWindow):
 
     @pyqtSlot(str, str)
     def ui_update_path(self, t1, t2):
-        self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
+        if not t1 or not t2:
+            self.ui.lbl_path.setText(' / '.join(self.location.key.lstrip('/').split()))
+        else:
+            self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
 
     def ui_update_title(self):
         self.setWindowTitle('plexdesktop v{} - {}'.format(__version__, self.session_manager.server.name))
