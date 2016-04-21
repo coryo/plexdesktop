@@ -370,7 +370,7 @@ class MPVPlayer(QMainWindow):
 
         logger.info('Player: playing url: ' + url)
 
-        args = {}
+        args = {'sid': 'no'}
         if self.mpv.plex_current_item.view_offset:
             args['start'] = '+{}'.format(self.mpv.plex_current_item.view_offset / 1000.0)
         if isinstance(self.mpv.plex_current_item, plexdevices.media.Track):
