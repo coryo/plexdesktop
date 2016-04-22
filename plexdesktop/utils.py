@@ -4,10 +4,12 @@ from PyQt5.QtCore import Qt, QObject, QFile, QCoreApplication
 import plexdevices
 
 
-def timestamp_from_ms(milliseconds):
+def timestamp_from_ms(milliseconds, minimal=False):
     m, s = divmod(milliseconds / 1000, 60)
     h, m = divmod(m, 60)
-    return "{:.0f}:{:02.0f}:{:02.0f}".format(h, m, s)
+    if minimal:
+        return ':'.join(('{:02.0f}'.format(x) for x in (h, m, s) if x > 0))
+    return '{:.0f}:{:02.0f}:{:02.0f}'.format(h, m, s)
 
 
 def msg_box(message, title='plexdesktop'):

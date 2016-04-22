@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QLabel, QDialog, QDialogButtonBox, QFormLayout,
-                             QCheckBox, QComboBox, QLineEdit, QAction)
+                             QCheckBox, QComboBox, QLineEdit, QAction, QSpinBox)
 from PyQt5.QtCore import Qt, QSize, QBuffer, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImageReader, QTransform, QIcon, QColor, QPainter
 from plexdesktop.style import STYLE
@@ -226,6 +226,10 @@ class SettingsDialog(QDialog):
         i.setCurrentIndex(i.findText(s.value('theme')))
         self.form.addRow(QLabel('theme'), i)
 
+        bf = QSpinBox()
+        bf.setValue(int(s.value('browser_font', 9)))
+        self.form.addRow(QLabel('browser font size'), bf)
+
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
@@ -236,3 +240,5 @@ class SettingsDialog(QDialog):
             theme = i.currentText()
             s.setValue('theme', theme)
             STYLE.theme(theme)
+
+            s.setValue('browser_font', bf.value())

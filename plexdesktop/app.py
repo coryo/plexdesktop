@@ -5,6 +5,7 @@ import pickle
 from logging.config import dictConfig
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QFile
+from PyQt5.QtGui import QFontDatabase, QFont
 from plexdesktop.browser import Browser
 from plexdesktop.style import STYLE
 from plexdesktop.settings import Settings
@@ -69,6 +70,19 @@ def run():
     os.environ["LC_NUMERIC"] = "C"
     s = Settings()
     STYLE.theme(s.value('theme', 'dark'))
+
+    qfd = QFontDatabase()
+    qfd.addApplicationFont(':/fonts/OpenSans-Regular.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-Italic.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-Bold.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-BoldItalic.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-ExtraBold.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-Light.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-ExtraBoldItalic.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-Semibold.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-SemiboldItalic.ttf')
+    qfd.addApplicationFont(':/fonts/OpenSans-LightItalic.ttf')
+
     form = Browser()
     form.show()
     sys.exit(app.exec_())
