@@ -215,7 +215,8 @@ class TreeView(QTreeView):
         self._worker_thread.quit()
 
     def clear(self):
-        self.model().clear()
+        if self.model():
+            self.model().clear()
 
     def current_item(self):
         indexes = self.selectedIndexes()

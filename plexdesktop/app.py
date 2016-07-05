@@ -4,9 +4,11 @@ import logging
 import pickle
 from logging.config import dictConfig
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QFile
+from PyQt5.QtCore import QFile, QObject
 from PyQt5.QtGui import QFontDatabase, QFont
 from plexdesktop.browser import Browser
+from plexdesktop.player import MPVPlayer
+from plexdesktop.photo_viewer import PhotoViewer
 from plexdesktop.style import STYLE
 from plexdesktop.settings import Settings
 import plexdevices
@@ -15,7 +17,8 @@ import plexdesktop.ui.resources_rc
 
 def run():
     # for cx_Freeze and requests ssl issues
-    os.environ["REQUESTS_CA_BUNDLE"] = os.path.join(os.getcwd(), "cacert.pem")
+    os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(os.getcwd(), 'cacert.pem')
+
     # Logging
     logging_config = {
         'version': 1,
@@ -65,9 +68,11 @@ def run():
         logger.handlers[0].doRollover()
     except Exception:
         pass
-    logger.info("Application Started")
+    logger.info('Application Started')
     app = QApplication(sys.argv)
-    os.environ["LC_NUMERIC"] = "C"
+    # Qt sets the locale in the QApplication constructor.
+    os.environ['LC_NUMERIC'] = 'C'
+
     s = Settings()
     STYLE.theme(s.value('theme', 'dark'))
 
@@ -83,6 +88,12 @@ def run():
     qfd.addApplicationFont(':/fonts/OpenSans-SemiboldItalic.ttf')
     qfd.addApplicationFont(':/fonts/OpenSans-LightItalic.ttf')
 
-    form = Browser()
-    form.show()
-    sys.exit(app.exec_())
+    browser = Browser()
+    browser.show()
+
+    exit_code = app.exec_()
+
+    import gc
+    gc.collect()
+
+    sys.exit(exit_code)

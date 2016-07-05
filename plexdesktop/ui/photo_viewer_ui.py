@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'plexdesktop\ui\photo_viewer.ui'
 #
-# Created by: PyQt5 UI code generator 5.5.1
+# Created by: PyQt5 UI code generator 5.6
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -18,6 +18,12 @@ class Ui_PhotoViewer(object):
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setSpacing(0)
         self.verticalLayout.setObjectName("verticalLayout")
+        self.indicator = QtWidgets.QProgressBar(self.centralwidget)
+        self.indicator.setMaximum(0)
+        self.indicator.setProperty("value", -1)
+        self.indicator.setTextVisible(False)
+        self.indicator.setObjectName("indicator")
+        self.verticalLayout.addWidget(self.indicator)
         self.image_label = AspectRatioLabel(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(0)

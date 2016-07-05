@@ -5,13 +5,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+*~
+*.dll
+
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
 env/
-build/
+build*/
 develop-eggs/
 dist/
 downloads/

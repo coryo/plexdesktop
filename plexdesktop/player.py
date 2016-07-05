@@ -32,8 +32,8 @@ class PlexMpv(mpv.MpvTemplatePyQt):
     prop_track_list = pyqtSignal(list)
     prop_video_params = pyqtSignal(dict)
     next_item = pyqtSignal(plexdevices.media.MediaItem)
-    update_timeline = pyqtSignal(plexdevices.media.PlayQueue, plexdevices.media.MediaItem,
-                                 float, dict, str)
+    update_timeline = pyqtSignal(plexdevices.media.PlayQueue,
+                                 plexdevices.media.MediaItem, float, dict, str)
     shutdown = pyqtSignal()
     play_queue_updated = pyqtSignal(plexdevices.media.PlayQueue)
 
@@ -251,8 +251,8 @@ class MPVPlayer(QMainWindow):
                             log_level=mpv.MpvLogLevel.INFO,
                             input_cursor='no',
                             cache_backbuffer=10 * 1024,
-                            cache_default=25 * 1024,
-                            demuxer_max_bytes=50 * 1024 * 1024,
+                            cache_default=10 * 1024,
+                            demuxer_max_bytes=25 * 1024 * 1024,
                             hwdec='auto',
                             observe=['pause', 'playback-time', 'duration',
                                      'track-list', 'video-params',
@@ -270,6 +270,8 @@ class MPVPlayer(QMainWindow):
         self.settings = Settings()
         self.drag_position = None
         self.resized = False
+        self.has_border = True
+        self.flags = self.windowFlags()
 
         # Restore saved volume
         try:
@@ -382,11 +384,19 @@ class MPVPlayer(QMainWindow):
         self.ui.control_bar.setVisible(not self.ui.control_bar.isVisible())
         self.menuBar().setVisible(not self.menuBar().isVisible())
 
+    def toggle_frame(self):
+        if self.has_border:
+            self.setWindowFlags(self.flags | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(self.flags)
+        self.has_border = not self.has_border
+
     # QT EVENTS ################################################################
     def closeEvent(self, event):
         self.playlist.close()
         self.settings.setValue('last_volume', self.ui.controls.slider_volume.value())
         self.mpv.quit()
+        self.mpv = None
 
     def wheelEvent(self, event):
         degrees = event.angleDelta().y() / 8
@@ -421,3 +431,7 @@ class MPVPlayer(QMainWindow):
             self.mpv.pause()
         elif event.key() == Qt.Key_QuoteLeft:
             self.toggle_control_bar()
+        elif event.key() == Qt.Key_1:
+            self.toggle_frame()
+            self.show()
+            event.accept()

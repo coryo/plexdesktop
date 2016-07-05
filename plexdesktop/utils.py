@@ -81,8 +81,8 @@ class Location(object):
         self.sort = sort
         self.params = params
 
-    def tuple(self):
-        return (self.key, self.sort, self.params)
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
 
     @staticmethod
     def home():
@@ -99,12 +99,3 @@ class Location(object):
     @staticmethod
     def channels():
         return Location('/channels/all')
-
-
-def icon_factory(res_path, color, size):
-    pixmap = QPixmap(res_path)
-    painter = QPainter(pixmap)
-    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-    painter.fillRect(pixmap.rect(), color)
-    painter.end()
-    return QIcon(pixmap.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))

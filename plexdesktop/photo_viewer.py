@@ -35,14 +35,18 @@ class PhotoViewer(QMainWindow):
         super(PhotoViewer, self).__init__(parent)
         self.ui = Ui_PhotoViewer()
         self.ui.setupUi(self)
+        self.ui.indicator.hide()
         self.ui.image_label.resize(self.sizeHint())
+        self.resize(self.sizeHint())
 
         self.worker_thread = QThread()
         self.worker_thread.start()
         self.worker = ImgWorker()
         self.worker.signal.connect(self.update_img)
+        self.worker.finished.connect(self.ui.indicator.hide)
         self.worker.moveToThread(self.worker_thread)
         self.operate.connect(self.worker.run)
+        self.operate.connect(self.ui.indicator.show)
 
         self.drag_position = None
         self.cur_img_data = None
@@ -65,7 +69,7 @@ class PhotoViewer(QMainWindow):
         STYLE.refresh()
 
     def sizeHint(self):
-        return QSize(1280, 720)
+        return QSize(960, 720)
 
     def closeEvent(self, event):
         self.worker_thread.quit()

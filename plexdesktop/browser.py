@@ -1,22 +1,25 @@
 import logging
+
 from PyQt5.QtWidgets import (QDialog, QMainWindow, QAction, QInputDialog,
-                             QApplication, QLineEdit)
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QCoreApplication, QThread, QFile, QSize
-from PyQt5.QtGui import QColor
+                             QLineEdit)
+from PyQt5.QtCore import (pyqtSignal, pyqtSlot, Qt, QCoreApplication, QThread,
+                          QFile, QObject, QTimer)
+
+import plexdevices
+
 from plexdesktop import __version__
 from plexdesktop.ui.browser_ui import Ui_Browser
 from plexdesktop.settings import Settings
 from plexdesktop.player import MPVPlayer
 from plexdesktop.photo_viewer import PhotoViewer
-from plexdesktop.utils import title, msg_box, Location, timestamp_from_ms
+from plexdesktop.utils import msg_box, Location, timestamp_from_ms
 from plexdesktop.style import STYLE
-from plexdesktop.extra_widgets import ManualServerDialog, LoginDialog, SettingsDialog
+from plexdesktop.extra_widgets import (ManualServerDialog, LoginDialog,
+                                       SettingsDialog)
 from plexdesktop.sqlcache import DB_IMAGE, DB_THUMB
 from plexdesktop.remote import Remote
 from plexdesktop.sessionmanager import SessionManager
-from plexdesktop.hubtree import TreeModel, TreeView
 from plexdesktop.about import About
-import plexdevices
 
 logger = logging.getLogger('plexdesktop')
 
@@ -30,18 +33,64 @@ class Browser(QMainWindow):
     new_hub_search = pyqtSignal(plexdevices.device.Server, str)
     player_exists = pyqtSignal(bool)
     photo_viewer_exists = pyqtSignal(bool)
+    location_changed = pyqtSignal(Location)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.ui = Ui_Browser()
         self.ui.setupUi(self)
+
+        self.session_manager = SessionManager()
+        self.worker_thread = QThread()
+        self.remotes = []
+        self.mpvplayer = None
+        self.image_viewer = None
+        self.container_size = 50
+        self.initialized = False
+
+        # Register actions with style, assign their icon name.
+        STYLE.widget.register(self.ui.actionBack, 'glyphicons-chevron-left')
+        STYLE.widget.register(self.ui.actionRefresh, 'glyphicons-refresh')
+        STYLE.widget.register(self.ui.actionFind, 'glyphicons-search')
+        STYLE.widget.register(self.ui.actionHome, 'glyphicons-home')
+        STYLE.widget.register(self.ui.actionOn_Deck, 'glyphicons-play')
+        STYLE.widget.register(self.ui.actionRecently_Added, 'glyphicons-folder-new')
+        STYLE.widget.register(self.ui.actionChannels, 'channels')
+        STYLE.widget.register(self.ui.actionMetadata, 'glyphicons-list')
+        STYLE.widget.register(self.ui.actionAdd_Shortcut, 'glyphicons-plus',
+                              'glyphicons-minus')
+        STYLE.refresh()
+
+        # Sort combobox
+        self.ui.sort.addItem('Default sort', None)
+        self.ui.sort.addItem('Added (new)', 'addedAt:desc')
+        self.ui.sort.addItem('Added (old)', 'addedAt:asc')
+        self.ui.sort.addItem('Release (new)', 'originallyAvailableAt:desc')
+        self.ui.sort.addItem('Release (old)', 'originallyAvailableAt:asc')
+        self.ui.sort.addItem('A-Z', 'titleSort:asc')
+        self.ui.sort.addItem('Z-A', 'titleSort:desc')
+        self.ui.sort.addItem('Rating (high)', 'rating:desc')
+        self.ui.sort.addItem('Rating (low)', 'rating:asc')
+        self.ui.sort.addItem('Resolution (low)', 'mediaHeight:asc')
+        self.ui.sort.addItem('Resolution (high)', 'mediaHeight:desc')
+        self.ui.sort.addItem('Duration (long)', 'duration:desc')
+        self.ui.sort.addItem('Duration (short)', 'duration:asc')
+
+        # Hide things
+        self.ui.hub_dock.hide()
+        self.ui.hub_search.hide()
         self.ui.indicator.hide()
         self.ui.metadata_panel.hide()
 
-        self.session_manager = SessionManager()
+        # Make connections
+        self._connections()
 
-        self.worker_thread = QThread()
-        self.session_manager.moveToThread(self.worker_thread)
+        # Initialize
+        self.worker_thread.start()
+        self.run_later(0, self.initial_load)
+
+    def _connections(self):
+        # Session Manager
         self.session_manager.active.connect(self.ui.actionLogout.setEnabled)
         self.session_manager.active.connect(self.ui.actionRefresh_Devices.setEnabled)
         self.session_manager.active.connect(self.ui.actionRefresh_Users.setEnabled)
@@ -53,28 +102,15 @@ class Browser(QMainWindow):
         self.change_user.connect(self.session_manager.switch_user)
         self.manual_add_server.connect(self.session_manager.manual_add_server)
         self.session_manager.done.connect(self._session_manager_cb)
-        self.worker_thread.start()
-
-        self.remotes = []
-        self.mpvplayer = None
-        self.image_viewer = None
-        self.container_size = 50
-        self.initialized = False
-        self.shortcuts = {}
-
+        self.session_manager.shortcuts_loaded.connect(self.ui_load_shortcuts)
+        self.session_manager.shortcuts_changed.connect(self.ui_load_shortcuts)
+        # Server Switcher
         self.ui.servers.currentIndexChanged.connect(self.action_change_server)
+        # User Switcher
         self.ui.users.currentIndexChanged.connect(self.action_change_user)
-        self.ui.shortcuts.activated.connect(self.load_shortcut)
-
-        # Register actions with style, assign their icon name.
-        STYLE.widget.register(self.ui.actionBack, 'glyphicons-chevron-left')
-        STYLE.widget.register(self.ui.actionRefresh, 'glyphicons-refresh')
-        STYLE.widget.register(self.ui.actionFind, 'glyphicons-search')
-        STYLE.widget.register(self.ui.actionHome, 'glyphicons-home')
-        STYLE.widget.register(self.ui.actionChannels, 'channels')
-        STYLE.widget.register(self.ui.actionMetadata, 'glyphicons-list')
-        STYLE.widget.register(self.ui.actionAdd_Shortcut, 'glyphicons-plus', 'glyphicons-minus')
-        STYLE.refresh()
+        # Shortcuts
+        self.ui.shortcuts.activated.connect(self.goto_shortcut)
+        self.location_changed.connect(self.ui_toggle_shortcut_button)
         # Menu
         self.ui.actionQuit.triggered.connect(self.close)
         self.ui.actionLogin_Refresh.triggered.connect(self.action_login)
@@ -85,12 +121,12 @@ class Browser(QMainWindow):
         self.ui.actionTrim_Thumb_Cache.triggered.connect(self.action_trim_thumb_cache)
         self.ui.actionRefresh_Devices.triggered.connect(self.action_refresh_devices)
         self.ui.actionRefresh_Users.triggered.connect(self.action_refresh_users)
-        self.ui.actionFind.triggered.connect(self.toggle_search_bar)
+        self.ui.actionFind.triggered.connect(self.ui_toggle_search_bar)
         self.ui.actionFind.triggered.connect(self.ui.hub_search.setFocus)
         self.ui.actionAbout.triggered.connect(self.about)
         self.ui.actionPreferences.triggered.connect(self.preferences)
         self.ui.actionView_Mode.triggered.connect(self.ui.list.toggle_view_mode)
-        # List signals
+        # List
         self.ui.list.goto_location.connect(self.goto_location)
         self.ui.list.working.connect(self.ui.indicator.show)
         self.ui.list.finished.connect(self.ui.indicator.hide)
@@ -108,46 +144,37 @@ class Browser(QMainWindow):
         self.ui.actionRecently_Added.triggered.connect(self.recently_added)
         self.ui.actionChannels.triggered.connect(self.channels)
         self.ui.actionHubs.triggered.connect(self.load_hubs)
-        self.ui.actionMetadata.triggered.connect(self.toggle_metadata_panel)
+        self.ui.actionMetadata.triggered.connect(self.ui_toggle_metadata_panel)
         self.ui.actionAdd_Shortcut.toggled.connect(self.add_remove_shortcut)
         # Zoom slider
         self.ui.zoom.valueChanged.connect(self.ui.list.icon_size)
-        # Sort combobox
-        self.ui.sort.addItem('Default sort', None)
-        self.ui.sort.addItem('Added (new)', 'addedAt:desc')
-        self.ui.sort.addItem('Added (old)', 'addedAt:asc')
-        self.ui.sort.addItem('Release (new)', 'originallyAvailableAt:desc')
-        self.ui.sort.addItem('Release (old)', 'originallyAvailableAt:asc')
-        self.ui.sort.addItem('A-Z', 'titleSort:asc')
-        self.ui.sort.addItem('Z-A', 'titleSort:desc')
-        self.ui.sort.addItem('Rating (high)', 'rating:desc')
-        self.ui.sort.addItem('Rating (low)', 'rating:asc')
-        self.ui.sort.addItem('Resolution (low)', 'mediaHeight:asc')
-        self.ui.sort.addItem('Resolution (high)', 'mediaHeight:desc')
-        self.ui.sort.addItem('Duration (long)', 'duration:desc')
-        self.ui.sort.addItem('Duration (short)', 'duration:asc')
+        # Sort
         self.ui.sort.currentIndexChanged.connect(self.sort)
         # Hub Search
-        self.ui.hub_dock.close()
+        self.new_hub_search.connect(self.ui.hub_tree.search)
+        self.new_hub_search.connect(self.ui.indicator.show)
         self.ui.hub_search.returnPressed.connect(self.hub_search)
+        self.ui.hub_search.cancel.connect(self.ui.hub_search.hide)
+        # Hub Tree
         self.ui.hub_tree.goto_location.connect(self.goto_location)
         self.ui.hub_tree.finished.connect(self.ui.indicator.hide)
         self.ui.hub_tree.finished.connect(self.ui.hub_dock.show)
-        self.new_hub_search.connect(self.ui.hub_tree.search)
-        self.new_hub_search.connect(self.ui.indicator.show)
-        self.ui.hub_search.cancel.connect(self.ui.hub_search.hide)
-        self.ui.hub_search.hide()
-
         self.ui.hub_tree.play.connect(self.play_list_item)
         self.ui.hub_tree.play_photo.connect(self.play_list_item_photo)
 
+    def run_later(self, time, cb):
+        QTimer.singleShot(time, cb)
+
+    @pyqtSlot()
+    def initial_load(self):
         self.session_manager.load_session()
         self.ui_update_session()
-        self.show()
 
+    @pyqtSlot()
     def preferences(self):
         dialog = SettingsDialog()
 
+    @pyqtSlot()
     def about(self):
         self._about = About()
         self._about.show()
@@ -158,10 +185,10 @@ class Browser(QMainWindow):
             return
         logger.info('Browser: initializing browser on server={}'.format(server))
         self.session_manager.switch_server(server)
+        # Default location and reset history
         self.location = Location.home()
         self.history = [self.location]
-        self.shortcuts = {}
-        self.load_shortcuts()
+
         self.ui_update_title()
         try:
             self.goto_location(self.location)
@@ -176,92 +203,54 @@ class Browser(QMainWindow):
         if not location.key.startswith('/'):
             location.key = self.location.key + '/' + location.key
         logger.info('Browser: key=' + location.key)
-
         self.ui_update_sort_no_signal(location.sort)
         self.ui.sort.setEnabled(location.key.startswith('/library'))
 
         self.location = location
         self.ui.list.add_container(self.session_manager.server, location.key, 0,
                                    self.container_size,
-                                   self.ui.sort.itemData(location.sort), location.params)
+                                   self.ui.sort.itemData(location.sort),
+                                   location.params)
 
-        self.toggle_shortcut_button()
+        self.location_changed.emit(location)
 
         if history and self.history[-1] != self.location:
             if self.history[-1].key == location.key:
                 self.history.pop()
             self.history.append(self.location)
 
+    @pyqtSlot()
+    def goto_shortcut(self):
+        self.goto_location(self.ui.shortcuts.currentData())
+
+    @pyqtSlot()
     def hub_search(self):
         query = self.ui.hub_search.text()
         s = self.session_manager.server
         if s is not None:
             self.new_hub_search.emit(s, query)
 
+    @pyqtSlot()
     def load_hubs(self):
         self.ui.hub_tree.goto(self.session_manager.server, '/hubs')
 
-    @pyqtSlot()
-    def toggle_search_bar(self):
-        self.ui.hub_search.setVisible(not self.ui.hub_search.isVisible())
-        self.ui.hub_search.clear()
-
-    def toggle_shortcut_button(self):
-        add = self.location.tuple() in self.shortcuts.values()
-        self.ui.actionAdd_Shortcut.blockSignals(True)
-        self.ui.actionAdd_Shortcut.setChecked(add)
-        self.ui.actionAdd_Shortcut.blockSignals(False)
-
+    @pyqtSlot(bool)
     def add_remove_shortcut(self, state):
         if state:
-            self.add_shortcut()
+            name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
+            if ok:
+                self.session_manager.shortcuts.add(name, self.location)
         else:
-            self.remove_shortcut()
-
-    def remove_shortcut(self):
-        try:
-            k = [x for x in self.shortcuts if self.shortcuts[x] == self.location.tuple()][0]
-        except Exception as e:
-            logger.debug('failed to remove shortcut {}'.format(str(e)))
-        else:
-            del self.shortcuts[k]
-            self.save_shortcuts()
-            self.load_shortcuts()
-            self.toggle_shortcut_button()
-
-    def save_shortcuts(self):
-        s = Settings()
-        s.setValue('shortcuts-{}'.format(self.session_manager.server.client_identifier),
-                   self.shortcuts)
-
-    def add_shortcut(self):
-        name, ok = QInputDialog.getText(self, 'Add Shortcut', 'name:')
-        if ok:
-            self.shortcuts[name] = self.location.tuple()
-            logger.debug(self.shortcuts)
-            self.save_shortcuts()
-            self.load_shortcuts()
-        self.toggle_shortcut_button()
-
-    def load_shortcuts(self):
-        self.ui.shortcuts.blockSignals(True)
-        self.ui.shortcuts.clear()
-        s = Settings()
-        f = s.value('shortcuts-{}'.format(self.session_manager.server.client_identifier))
-        if f:
-            self.shortcuts = f
-            for name, loc in f.items():
-                self.ui.shortcuts.addItem(name, name)
-        self.ui.shortcuts.setVisible(self.ui.shortcuts.count() > 0)
-        self.ui.shortcuts.blockSignals(False)
+            self.session_manager.shortcuts.remove(self.location)
 
     @pyqtSlot()
-    def load_shortcut(self):
-        i = self.ui.shortcuts.currentText()
-        logger.debug(self.shortcuts)
-        logger.debug(i)
-        loc = Location(*self.shortcuts[i])
-        self.goto_location(loc)
+    def ui_load_shortcuts(self):
+        self.ui.shortcuts.blockSignals(True)
+        self.ui.shortcuts.clear()
+        for name, loc in self.session_manager.shortcuts.items():
+            self.ui.shortcuts.addItem(name, loc)
+        self.ui.shortcuts.setVisible(self.ui.shortcuts.count() > 0)
+        self.ui.shortcuts.blockSignals(False)
 
     @pyqtSlot(int)
     def action_change_server(self, index):
@@ -319,7 +308,9 @@ class Browser(QMainWindow):
 
     def create_photo_viewer(self):
         if self.image_viewer is not None:
-            self.image_viewer.close()
+            self.image_viewer.raise_()
+            self.photo_viewer_exists.emit(True)
+            return
         self.image_viewer = PhotoViewer()
         self.image_viewer.closed.connect(self.destroy_photo_viewer)
         self.image_viewer.next_button.connect(self.ui.list.next_item)
@@ -401,11 +392,11 @@ class Browser(QMainWindow):
 
     @pyqtSlot()
     def action_trim_image_cache(self):
-        DB_IMAGE.remove(5)
+        DB_IMAGE.remove()
 
     @pyqtSlot()
     def action_trim_thumb_cache(self):
-        DB_THUMB.remove(5)
+        DB_THUMB.remove()
 
     @pyqtSlot()
     def action_refresh_devices(self):
@@ -437,9 +428,9 @@ class Browser(QMainWindow):
 
     @pyqtSlot()
     def sort(self):
-        key, sort, params = self.location.tuple()
-        new_sort = self.ui.sort.currentIndex()
-        self.goto_location(Location(key, new_sort, params), history=False)
+        new_loc = Location(self.location.key, self.ui.sort.currentIndex(),
+                           self.location.params)
+        self.goto_location(new_loc, history=False)
 
     @pyqtSlot()
     def home(self):
@@ -459,8 +450,19 @@ class Browser(QMainWindow):
         self.goto_location(Location.channels())
 
     @pyqtSlot()
-    def toggle_metadata_panel(self):
+    def ui_toggle_metadata_panel(self):
         self.ui.metadata_panel.setVisible(not self.ui.metadata_panel.isVisible())
+
+    @pyqtSlot()
+    def ui_toggle_search_bar(self):
+        self.ui.hub_search.setVisible(not self.ui.hub_search.isVisible())
+        self.ui.hub_search.clear()
+
+    @pyqtSlot()
+    def ui_toggle_shortcut_button(self):
+        self.ui.actionAdd_Shortcut.blockSignals(True)
+        self.ui.actionAdd_Shortcut.setChecked(self.location in self.session_manager.shortcuts)
+        self.ui.actionAdd_Shortcut.blockSignals(False)
 
     # UI Updates ###############################################################
     def ui_update_servers(self):
@@ -494,6 +496,7 @@ class Browser(QMainWindow):
 
     @pyqtSlot(plexdevices.media.BaseObject)
     def ui_update_metadata_panel(self, media_object):
+        # TODO: make this good or remove it.
         elements = ['title', 'summary', 'year', 'duration', 'rating', 'view_offset']
         data = {x: getattr(media_object, x) for x in elements
                 if hasattr(media_object, x) and getattr(media_object, x)}
@@ -533,12 +536,12 @@ class Browser(QMainWindow):
         try:
             self.ui_update_servers_no_signal(session.servers.index(server))
         except Exception as e:
-            logger.error('Browser: no servers. ' + str(e))
+            logger.error('Browser: no servers. {}'.format(e))
 
         try:
             self.ui_update_users_no_signal(self.ui.users.findData(self.session_manager.user))
         except Exception as e:
-            logger.error('Browser: no users. ' + str(e))
+            logger.error('Browser: no users. {}'.format(e))
 
         for player in session.players:
             action = QAction(str(player), self.ui.menuRemotes)

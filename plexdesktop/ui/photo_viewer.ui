@@ -31,6 +31,19 @@
      <number>0</number>
     </property>
     <item>
+     <widget class="QProgressBar" name="indicator">
+      <property name="maximum">
+       <number>0</number>
+      </property>
+      <property name="value">
+       <number>-1</number>
+      </property>
+      <property name="textVisible">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
      <widget class="AspectRatioLabel" name="image_label">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -76,7 +89,7 @@
   </widget>
   <action name="actionBack">
    <property name="icon">
-    <iconset resource="../resources.qrc">
+    <iconset>
      <normaloff>:/images/light/glyphicons-chevron-left.png</normaloff>:/images/light/glyphicons-chevron-left.png</iconset>
    </property>
    <property name="text">
@@ -85,7 +98,7 @@
   </action>
   <action name="actionForward">
    <property name="icon">
-    <iconset resource="../resources.qrc">
+    <iconset>
      <normaloff>:/images/light/glyphicons-chevron-right.png</normaloff>:/images/light/glyphicons-chevron-right.png</iconset>
    </property>
    <property name="text">
@@ -94,7 +107,7 @@
   </action>
   <action name="actionRotateLeft">
    <property name="icon">
-    <iconset resource="../resources.qrc">
+    <iconset>
      <normaloff>:/images/light/glyphicons-rotate-left.png</normaloff>:/images/light/glyphicons-rotate-left.png</iconset>
    </property>
    <property name="text">
@@ -103,7 +116,7 @@
   </action>
   <action name="actionRotateRight">
    <property name="icon">
-    <iconset resource="../resources.qrc">
+    <iconset>
      <normaloff>:/images/light/glyphicons-rotate-right.png</normaloff>:/images/light/glyphicons-rotate-right.png</iconset>
    </property>
    <property name="text">
@@ -112,7 +125,7 @@
   </action>
   <action name="actionRefresh">
    <property name="icon">
-    <iconset resource="../resources.qrc">
+    <iconset>
      <normaloff>:/images/light/glyphicons-refresh.png</normaloff>:/images/light/glyphicons-refresh.png</iconset>
    </property>
    <property name="text">

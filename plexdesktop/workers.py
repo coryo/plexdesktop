@@ -70,7 +70,7 @@ class ThumbWorker(QObject):
         if img is None:
             img_data = DB_THUMB[url]
             if img_data is None:  # not in cache, fetch from server
-                img_data = media_object.container.server.image(url, w=120, h=120)
+                img_data = media_object.container.server.image(url, w=240, h=240)
                 DB_THUMB[url] = img_data
             img = QPixmap()
             img.loadFromData(img_data)
@@ -112,7 +112,7 @@ class QueueThumbWorker(QObject):
         if img is None:
             img_data = DB_THUMB[url]
             if img_data is None:  # not in cache, fetch from server
-                img_data = media_object.container.server.image(url, w=120, h=120)
+                img_data = media_object.container.server.image(url, w=240, h=240)
                 DB_THUMB[url] = img_data
             img = QPixmap()
             img.loadFromData(img_data)

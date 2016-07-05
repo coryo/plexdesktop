@@ -26,6 +26,13 @@ class CacheConnection(sqlite3.Connection):
         except (IndexError, TypeError):
             return None
 
+    def __len__(self):
+        n = self.execute('SELECT Count(*) from cache')
+        try:
+            return n.fetchone()[0]
+        except IndexError:
+            return 0
+
     def __setitem__(self, key, value):
         try:
             self.execute('INSERT INTO cache (key, value) VALUES (?, ?)',
@@ -39,7 +46,10 @@ class CacheConnection(sqlite3.Connection):
                            'PRAGMA page_size = 1024;')
         self.commit()
 
-    def remove(self, n):
+    def remove(self, n=None):
+        if n is None:
+            n = int(len(self) * 0.10)
+        logger.info('cache: removing {} items.'.format(n))
         self.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY random() LIMIT ?)', (n,))
         self.commit()
         self.execute('VACUUM')
@@ -50,6 +60,13 @@ class AccessCacheConnection(sqlite3.Connection):
     def __init__(self, *args):
         super().__init__(*args)
         self.createDB()
+
+    def __len__(self):
+        n = self.execute('SELECT Count(*) from cache')
+        try:
+            return int(n.fetchone()[0])
+        except IndexError:
+            return 0
 
     def __delitem__(self, key):
         self.execute('DELETE FROM cache WHERE key = ?', (hashlib.md5(key.encode('utf-8')).hexdigest(),))
@@ -78,10 +95,12 @@ class AccessCacheConnection(sqlite3.Connection):
                            'PRAGMA page_size = 8192; PRAGMA auto_vacuum=FULL;')
         self.commit()
 
-    def remove(self, n):
+    def remove(self, n=None):
+        if n is None:
+            n = int(len(self) * 0.10)
+        logger.info('cache: removing {} items.'.format(n))
         self.execute('DELETE FROM cache WHERE key IN (SELECT key from cache ORDER BY accessed ASC LIMIT ?)', (n,))
         self.commit()
-        self.execute('VACUUM')
 
 
 DB_THUMB = sqlite3.connect('cache_thumb.db', 5, 0, "DEFERRED", False, CacheConnection)

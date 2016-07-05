@@ -1,5 +1,5 @@
 @ECHO off
-SET PYUIC=C:\Python34\Lib\site-packages\PyQt5\pyuic5.bat
+SET PYUIC=C:\Python35\Lib\site-packages\PyQt5\pyuic5.bat
 
 CALL %PYUIC% plexdesktop\ui\mainwindow.ui -o plexdesktop\ui\mainwindow_ui.py
 CALL %PYUIC% plexdesktop\ui\browser.ui -o plexdesktop\ui\browser_ui.py --from-imports

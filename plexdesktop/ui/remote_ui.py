@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'plexdesktop\ui\remote.ui'
 #
-# Created by: PyQt5 UI code generator 5.5.1
+# Created by: PyQt5 UI code generator 5.6
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -22,6 +22,7 @@ class Ui_Remote(object):
         self.horizontalWidget_2.setSizePolicy(sizePolicy)
         self.horizontalWidget_2.setObjectName("horizontalWidget_2")
         self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.horizontalWidget_2)
+        self.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
@@ -93,6 +94,7 @@ class Ui_Remote(object):
         self.verticalWidget.setSizePolicy(sizePolicy)
         self.verticalWidget.setObjectName("verticalWidget")
         self.verticalLayout_4 = QtWidgets.QVBoxLayout(self.verticalWidget)
+        self.verticalLayout_4.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_4.setObjectName("verticalLayout_4")
         self.lbl_title = QtWidgets.QLabel(self.verticalWidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)

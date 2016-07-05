@@ -281,15 +281,11 @@ class ListView(QListView):
         self._model.working.connect(self.working.emit)
         self._model.done.connect(self.finished.emit)
         self._model.new_container_titles.connect(self.new_titles.emit)
-        self._model._thumb_worker.finished.connect(self._resize)
-        self._model.rowsInserted.connect(self.new_rows)
+        self._model._thumb_worker.result_ready.connect(self._resize)
 
         self.viewModeChanged.connect(self.visibleItemsChanged)
 
         self._resize_hack = True
-
-    def new_rows(self, parent, first, last):
-        logger.debug('new_rows {} {} {}'.format(parent, first, last))
 
     def _resize(self):
         if self.viewMode() == QListView.ListMode:
@@ -337,8 +333,9 @@ class ListView(QListView):
         self.setIconSize(self.last_icon_size)
         self.visibleItemsChanged()
 
-    def add_container(self, server, key, page=0, size=50, sort="", params=None):
-        self.container_request.emit(server, key, page, size, sort,
+    def add_container(self, server, key, page=0, size=50, sort=None, params=None):
+        self.container_request.emit(server, key, page, size,
+                                    sort if sort is not None else '',
                                     params if params is not None else {})
 
     def double_click(self, index):
@@ -354,12 +351,22 @@ class ListView(QListView):
     def currentItem(self):
         return self.currentIndex().data(role=Qt.UserRole)
 
+    def moveCursor(self, cursorAction, modifiers):
+        index = self.currentIndex()
+        if cursorAction == QAbstractItemView.MoveNext:
+            i = self.model().index(index.row() + 1, index.column())
+            return i if i.isValid() else self.model().index(0, 0)
+        elif cursorAction == QAbstractItemView.MovePrevious:
+            i = self.model().index(index.row() - 1, index.column())
+            return i if i.isValid() else self.model().index(self.model().rowCount() - 1, 0)
+        return super().moveCursor(cursorAction, modifiers)
+
     def next_item(self):
-        index = self.moveCursor(QAbstractItemView.MoveDown, Qt.NoModifier)
+        index = self.moveCursor(QAbstractItemView.MoveNext, Qt.NoModifier)
         self.setCurrentIndex(index)
 
     def prev_item(self):
-        index = self.moveCursor(QAbstractItemView.MoveUp, Qt.NoModifier)
+        index = self.moveCursor(QAbstractItemView.MovePrevious, Qt.NoModifier)
         self.setCurrentIndex(index)
 
     def visibleItemsChanged(self):
