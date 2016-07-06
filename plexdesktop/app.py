@@ -1,4 +1,5 @@
 import os
+os.environ['LC_NUMERIC'] = 'C'
 import sys
 import logging
 import pickle
@@ -70,8 +71,6 @@ def run():
         pass
     logger.info('Application Started')
     app = QApplication(sys.argv)
-    # Qt sets the locale in the QApplication constructor.
-    os.environ['LC_NUMERIC'] = 'C'
 
     s = Settings()
     STYLE.theme(s.value('theme', 'dark'))
