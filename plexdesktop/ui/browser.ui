@@ -255,6 +255,7 @@
     <property name="title">
      <string>&amp;File</string>
     </property>
+    <addaction name="actionNew_Browser"/>
     <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
@@ -291,9 +292,16 @@
     </property>
     <addaction name="actionAbout"/>
    </widget>
+   <widget class="QMenu" name="menuWindow">
+    <property name="title">
+     <string>Window</string>
+    </property>
+    <addaction name="actionDownloads"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
    <addaction name="menuSession"/>
+   <addaction name="menuWindow"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QToolBar" name="navToolBar">
@@ -568,6 +576,22 @@
    </property>
    <property name="shortcut">
     <string>`</string>
+   </property>
+  </action>
+  <action name="actionDownloads">
+   <property name="text">
+    <string>&amp;Downloads</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+J</string>
+   </property>
+  </action>
+  <action name="actionNew_Browser">
+   <property name="text">
+    <string>New &amp;Browser</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
    </property>
   </action>
  </widget>

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>416</width>
-    <height>377</height>
+    <width>473</width>
+    <height>414</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -31,31 +31,21 @@
      <number>0</number>
     </property>
     <item>
-     <widget class="QProgressBar" name="indicator">
-      <property name="maximum">
-       <number>0</number>
-      </property>
-      <property name="value">
-       <number>-1</number>
-      </property>
-      <property name="textVisible">
+     <widget class="GraphicsView" name="view">
+      <property name="interactive">
        <bool>false</bool>
       </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="AspectRatioLabel" name="image_label">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
+      <property name="renderHints">
+       <set>QPainter::Antialiasing|QPainter::SmoothPixmapTransform|QPainter::TextAntialiasing</set>
       </property>
-      <property name="text">
-       <string/>
+      <property name="dragMode">
+       <enum>QGraphicsView::NoDrag</enum>
       </property>
-      <property name="alignment">
-       <set>Qt::AlignCenter</set>
+      <property name="transformationAnchor">
+       <enum>QGraphicsView::AnchorUnderMouse</enum>
+      </property>
+      <property name="resizeAnchor">
+       <enum>QGraphicsView::AnchorUnderMouse</enum>
       </property>
      </widget>
     </item>
@@ -66,7 +56,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>416</width>
+     <width>473</width>
      <height>21</height>
     </rect>
    </property>
@@ -135,8 +125,8 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>AspectRatioLabel</class>
-   <extends>QLabel</extends>
+   <class>GraphicsView</class>
+   <extends>QGraphicsView</extends>
    <header>plexdesktop.extra_widgets.h</header>
   </customwidget>
  </customwidgets>

@@ -2,21 +2,22 @@ import os
 os.environ['LC_NUMERIC'] = 'C'
 import sys
 import logging
-import pickle
-from logging.config import dictConfig
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QFile, QObject
-from PyQt5.QtGui import QFontDatabase, QFont
-from plexdesktop.browser import Browser
-from plexdesktop.player import MPVPlayer
-from plexdesktop.photo_viewer import PhotoViewer
-from plexdesktop.style import STYLE
-from plexdesktop.settings import Settings
-import plexdevices
+import logging.config
+
+import PyQt5.QtWidgets
+import PyQt5.QtGui
+
+import plexdesktop.ui
+import plexdesktop.browser
+import plexdesktop.style
+import plexdesktop.settings
+import plexdesktop.extra_widgets
+import plexdesktop.sqlcache
+import plexdesktop.components
 import plexdesktop.ui.resources_rc
 
 
-def run():
+def run(log_level=logging.INFO):
     # for cx_Freeze and requests ssl issues
     os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(os.getcwd(), 'cacert.pem')
 
@@ -25,7 +26,9 @@ def run():
         'version': 1,
         'disable_existing_loggers': False,
         'formatters': {
-            'f': {'format': '%(asctime)s %(name)-20s %(levelname)-8s %(message)s'}
+            'f': {
+                'format': '%(asctime)s %(name)-20s %(levelname)-8s %(message)s'
+            }
         },
         'handlers': {
             'h': {
@@ -33,13 +36,13 @@ def run():
                 'filename': 'plexdesktop.log',
                 'formatter': 'f',
                 'backupCount': 1,
-                'level': logging.DEBUG
+                'level': log_level
             }
         },
         'loggers': {
             'plexdesktop': {
                 'handlers': ['h'],
-                'level': logging.DEBUG
+                'level': log_level
             },
             'plexdesktop.mpv': {
                 'handlers': ['h'],
@@ -48,34 +51,34 @@ def run():
             },
             'plexdevices.device': {
                 'handlers': ['h'],
-                'level': logging.DEBUG,
+                'level': log_level,
                 'propagate': True
             },
             'plexdevices.session': {
                 'handlers': ['h'],
-                'level': logging.DEBUG,
+                'level': log_level,
                 'propagate': True
             },
             'plexdevices.media': {
                 'handlers': ['h'],
-                'level': logging.DEBUG,
+                'level': log_level,
                 'propagate': True
             },
         }
     }
-    dictConfig(logging_config)
+    logging.config.dictConfig(logging_config)
     logger = logging.getLogger('plexdesktop')
     try:
         logger.handlers[0].doRollover()
     except Exception:
         pass
     logger.info('Application Started')
-    app = QApplication(sys.argv)
+    app = PyQt5.QtWidgets.QApplication(sys.argv)
 
-    s = Settings()
-    STYLE.theme(s.value('theme', 'dark'))
+    s = plexdesktop.settings.Settings()
+    plexdesktop.style.Style.Instance().theme(s.value('theme', 'dark'))
 
-    qfd = QFontDatabase()
+    qfd = PyQt5.QtGui.QFontDatabase()
     qfd.addApplicationFont(':/fonts/OpenSans-Regular.ttf')
     qfd.addApplicationFont(':/fonts/OpenSans-Italic.ttf')
     qfd.addApplicationFont(':/fonts/OpenSans-Bold.ttf')
@@ -87,12 +90,12 @@ def run():
     qfd.addApplicationFont(':/fonts/OpenSans-SemiboldItalic.ttf')
     qfd.addApplicationFont(':/fonts/OpenSans-LightItalic.ttf')
 
-    browser = Browser()
-    browser.show()
+    cm = plexdesktop.components.ComponentManager.Instance()
+    cm.create_component(plexdesktop.extra_widgets.DownloadManager, 'download_manager')
+    cm.create_browser()
 
     exit_code = app.exec_()
 
-    import gc
-    gc.collect()
+    plexdesktop.sqlcache.DB_THUMB.commit()
 
     sys.exit(exit_code)

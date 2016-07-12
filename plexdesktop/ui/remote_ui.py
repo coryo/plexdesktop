@@ -11,10 +11,12 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Remote(object):
     def setupUi(self, Remote):
         Remote.setObjectName("Remote")
-        Remote.resize(533, 253)
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(Remote)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        self.horizontalWidget_2 = QtWidgets.QWidget(Remote)
+        Remote.resize(557, 262)
+        self.centralwidget = QtWidgets.QWidget(Remote)
+        self.centralwidget.setObjectName("centralwidget")
+        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.centralwidget)
+        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
+        self.horizontalWidget_2 = QtWidgets.QWidget(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -85,8 +87,8 @@ class Ui_Remote(object):
         self.verticalLayout_3.addWidget(self.lbl_timeline)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_3.addItem(spacerItem)
-        self.horizontalLayout_3.addWidget(self.horizontalWidget_2)
-        self.verticalWidget = QtWidgets.QWidget(Remote)
+        self.horizontalLayout_2.addWidget(self.horizontalWidget_2)
+        self.verticalWidget = QtWidgets.QWidget(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -131,14 +133,15 @@ class Ui_Remote(object):
         self.lbl_image.setWordWrap(True)
         self.lbl_image.setObjectName("lbl_image")
         self.verticalLayout_4.addWidget(self.lbl_image)
-        self.horizontalLayout_3.addWidget(self.verticalWidget)
+        self.horizontalLayout_2.addWidget(self.verticalWidget)
+        Remote.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(Remote)
         QtCore.QMetaObject.connectSlotsByName(Remote)
 
     def retranslateUi(self, Remote):
         _translate = QtCore.QCoreApplication.translate
-        Remote.setWindowTitle(_translate("Remote", "Remote"))
+        Remote.setWindowTitle(_translate("Remote", "MainWindow"))
         self.btn_back.setText(_translate("Remote", "< Back"))
         self.btn_down.setText(_translate("Remote", "v"))
         self.btn_left.setText(_translate("Remote", "<"))

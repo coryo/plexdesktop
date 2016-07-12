@@ -1,18 +1,21 @@
 import logging
-from PyQt5.QtWidgets import QWidget, QInputDialog, QMainWindow, QAction, QMenu
-from PyQt5.QtCore import (pyqtSignal, pyqtSlot, Qt, QThread, QPoint, QSize,
-                          QObject, QTimer, QElapsedTimer)
-from PyQt5.QtGui import QCursor
-from plexdesktop.ui.player_ui import Ui_Player
-from plexdesktop.settings import Settings
-from plexdesktop.browserlist import PlaylistView
-from plexdesktop.style import STYLE
-import plexdesktop.utils as utils
+
 import mpv
 import plexdevices
 
+import PyQt5.QtWidgets
+import PyQt5.QtCore
+
+import plexdesktop.ui.player_ui
+import plexdesktop.style
+import plexdesktop.settings
+import plexdesktop.browserlist
+import plexdesktop.utils
+import plexdesktop.components
+
 logger = logging.getLogger('plexdesktop')
 mpv_logger = logging.getLogger('plexdesktop.mpv')
+Qt = PyQt5.QtCore.Qt
 
 MPV_TO_LOGGING = {
     'fatal': logging.CRITICAL,
@@ -26,31 +29,34 @@ MPV_TO_LOGGING = {
 
 
 class PlexMpv(mpv.MpvTemplatePyQt):
-    prop_duration = pyqtSignal(float)
-    prop_volume = pyqtSignal(float)
-    prop_playback_time = pyqtSignal(float)
-    prop_track_list = pyqtSignal(list)
-    prop_video_params = pyqtSignal(dict)
-    next_item = pyqtSignal(plexdevices.media.MediaItem)
-    update_timeline = pyqtSignal(plexdevices.media.PlayQueue,
-                                 plexdevices.media.MediaItem, float, dict, str)
-    shutdown = pyqtSignal()
-    play_queue_updated = pyqtSignal(plexdevices.media.PlayQueue)
+    prop_duration = PyQt5.QtCore.pyqtSignal(float)
+    prop_volume = PyQt5.QtCore.pyqtSignal(float)
+    prop_playback_time = PyQt5.QtCore.pyqtSignal(float)
+    prop_track_list = PyQt5.QtCore.pyqtSignal(list)
+    prop_video_params = PyQt5.QtCore.pyqtSignal(dict)
+    next_item = PyQt5.QtCore.pyqtSignal(plexdevices.media.MediaItem)
+    update_timeline = PyQt5.QtCore.pyqtSignal(plexdevices.media.PlayQueue,
+                                              plexdevices.media.MediaItem,
+                                              float, dict, str)
+    shutdown = PyQt5.QtCore.pyqtSignal()
+    play_queue_updated = PyQt5.QtCore.pyqtSignal(plexdevices.media.PlayQueue)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._timeline_thread = QThread(self)
+        self._timeline_thread = PyQt5.QtCore.QThread(self)
         self._timeline_updater = TimelineUpdater()
         self._timeline_updater.moveToThread(self._timeline_thread)
         self.update_timeline.connect(self._timeline_updater.update)
         self._timeline_thread.finished.connect(self._timeline_thread.deleteLater)
         self._timeline_thread.start()
 
+        self.destroyed.connect(self._timeline_thread.quit)
+
         self.plex_play_queue = None
         self.plex_current_item = None
         self.plex_next_item = None
 
-        self.timeline_timer = QElapsedTimer()
+        self.timeline_timer = PyQt5.QtCore.QElapsedTimer()
 
     @property
     def headers(self):
@@ -122,21 +128,21 @@ class PlexMpv(mpv.MpvTemplatePyQt):
     def play(self, url, args):
         self.mpv.command_node('loadfile', url, 'replace', args)
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def pause(self):
         self.mpv.pause = not self.mpv.pause
 
-    @pyqtSlot(str)
+    @PyQt5.QtCore.pyqtSlot(str)
     def change_audio_track(self, tid):
         logger.debug('changing audio track: {}'.format(tid))
         self.mpv.aid = tid
 
-    @pyqtSlot(str)
+    @PyQt5.QtCore.pyqtSlot(str)
     def change_video_track(self, tid):
         logger.debug('changing video track: {}'.format(tid))
         self.mpv.vid = tid
 
-    @pyqtSlot(str)
+    @PyQt5.QtCore.pyqtSlot(str)
     def change_sub_track(self, tid):
         logger.debug('changing sub tid: {}'.format(tid))
         if tid == '-1':
@@ -145,20 +151,20 @@ class PlexMpv(mpv.MpvTemplatePyQt):
             self.mpv.sid = tid
             self.mpv.sub_visibility = True
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def playlist_prev(self):
         self.playlist_play_item(self.plex_play_queue.get_prev())
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def playlist_next(self):
         self.playlist_play_item(self.plex_play_queue.get_next())
 
-    @pyqtSlot(plexdevices.media.MediaItem)
+    @PyQt5.QtCore.pyqtSlot(plexdevices.media.MediaItem)
     def playlist_play_item(self, item):
         self.plex_next_item = item
         self.mpv.stop()  # trigger an end_file
 
-    @pyqtSlot(plexdevices.media.MediaItem)
+    @PyQt5.QtCore.pyqtSlot(plexdevices.media.MediaItem)
     def playlist_skip_to(self, item):
         self.playlist_play_item(self.plex_play_queue.select(item))
 
@@ -174,19 +180,19 @@ class PlexMpv(mpv.MpvTemplatePyQt):
             self.play_queue_updated.emit(self.plex_play_queue)
 
 
-class TimelineUpdater(QObject):
-    finished = pyqtSignal()
+class TimelineUpdater(PyQt5.QtCore.QObject):
+    finished = PyQt5.QtCore.pyqtSignal()
 
     def update(self, play_queue, item, time, headers, state='playing'):
         play_queue.timeline_update(item, int(time * 1000), headers, state)
         self.finished.emit()
 
 
-class PlayerUI(QWidget):
+class PlayerUI(PyQt5.QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ui = Ui_Player()
+        self.ui = plexdesktop.ui.player_ui.Ui_Player()
         self.ui.setupUi(self)
         self.ui.player_widget.setAttribute(Qt.WA_DontCreateNativeAncestors)
         self.ui.player_widget.setAttribute(Qt.WA_NativeWindow)
@@ -200,50 +206,52 @@ class PlayerUI(QWidget):
         self.player = self.ui.player_widget
         self.control_bar = self.ui.control_bar
 
-        STYLE.widget.register(self.ui.btn_play, 'glyphicons-pause', 'glyphicons-play')
-        STYLE.widget.register(self.ui.btn_prev, 'glyphicons-chevron-left')
-        STYLE.widget.register(self.ui.btn_next, 'glyphicons-chevron-right')
-        STYLE.refresh()
+        style = plexdesktop.style.Style.Instance()
+        style.widget.register(self.ui.btn_play, 'glyphicons-pause', 'glyphicons-play')
+        style.widget.register(self.ui.btn_prev, 'glyphicons-chevron-left')
+        style.widget.register(self.ui.btn_next, 'glyphicons-chevron-right')
+        style.refresh()
 
-    @pyqtSlot(float)
+    @PyQt5.QtCore.pyqtSlot(float)
     def update_seek_slider_position(self, val):
         if not self.ui.slider_progress.isSliderDown():
             self.ui.slider_progress.setSliderPosition(val * 1000)
 
-    @pyqtSlot(float)
+    @PyQt5.QtCore.pyqtSlot(float)
     def update_seek_slider_maximum(self, val):
         self.ui.slider_progress.setMaximum(val * 1000)
 
-    @pyqtSlot(float)
+    @PyQt5.QtCore.pyqtSlot(float)
     def update_lbl_total_time(self, val):
-        self.ui.lbl_total_time.setText(utils.timestamp_from_ms(milliseconds=val * 1000.0))
+        self.ui.lbl_total_time.setText(plexdesktop.utils.timestamp_from_ms(milliseconds=val * 1000.0))
 
-    @pyqtSlot(float)
+    @PyQt5.QtCore.pyqtSlot(float)
     def update_lbl_current_time(self, val):
-        self.ui.lbl_current_time.setText(utils.timestamp_from_ms(milliseconds=val * 1000.0))
+        self.ui.lbl_current_time.setText(plexdesktop.utils.timestamp_from_ms(milliseconds=val * 1000.0))
 
 
-class MPVPlayer(QMainWindow):
-    player_stopped = pyqtSignal()
-    mouse_moved = pyqtSignal()
+class MPVPlayer(plexdesktop.components.ComponentWindow):
+    player_stopped = PyQt5.QtCore.pyqtSignal()
+    mouse_moved = PyQt5.QtCore.pyqtSignal()
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, name, parent=None):
+        super().__init__(name, parent)
         self.ui = PlayerUI(self)
         self.setCentralWidget(self.ui)
 
         menu = self.menuBar().addMenu('&File')
-        on_quit = QAction('&Quit', self)
+        on_quit = PyQt5.QtWidgets.QAction('&Quit', self)
         on_quit.triggered.connect(self.on_quit)
         menu.addAction(on_quit)
 
         menu_view = self.menuBar().addMenu('&View')
-        on_playlist = QAction('&Playlist', self)
+        on_playlist = PyQt5.QtWidgets.QAction('&Playlist', self)
         on_playlist.triggered.connect(self.on_playlist)
         menu_view.addAction(on_playlist)
 
         # MPV setup
         mpv.load_library()
+        logger.info('libmpv version: {}'.format(mpv.api_version()))
         wid = int(self.ui.player.winId())
         self.mpv = PlexMpv(self)
         self.mpv.initialize(wid=wid,
@@ -261,13 +269,13 @@ class MPVPlayer(QMainWindow):
 
         # cursor hiding
         self.ui.setMouseTracking(True)
-        self.cursor_timer = QTimer()
+        self.cursor_timer = PyQt5.QtCore.QTimer(self)
         self.cursor_timer.setSingleShot(True)
         self.cursor_timer.setInterval(1000)
         self.cursor_timer.timeout.connect(self.hide_cursor)
         self.mouse_moved.connect(self.cursor_timer.start)
 
-        self.settings = Settings()
+        self.settings = plexdesktop.settings.Settings()
         self.drag_position = None
         self.resized = False
         self.has_border = True
@@ -304,65 +312,68 @@ class MPVPlayer(QMainWindow):
         self.ui.controls.slider_volume.valueChanged.connect(self.slider_volume)
         self.ui.controls.slider_progress.sliderReleased.connect(self.slider_seek)
 
-        self.mpv.shutdown.connect(self.player_stopped.emit)
+        self.mpv.shutdown.connect(self._shutdown)
 
         # Playlist
-        self.playlist = PlaylistView()
+        self.playlist = plexdesktop.browserlist.PlaylistView(self)
+        self.playlist.setWindowFlags(Qt.Window)
         self.playlist.setWindowTitle('Playlist')
         self.playlist.play.connect(self.mpv.playlist_skip_to)
         self.playlist.remove.connect(self.mpv.playlist_remove_item)
         self.mpv.play_queue_updated.connect(self.playlist.set_container)
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def on_quit(self):
         self.close()
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def on_playlist(self):
         self.playlist.setVisible(not self.playlist.isVisible())
 
-    @pyqtSlot(int)
+    @PyQt5.QtCore.pyqtSlot(int)
     def slider_volume(self, val, f=10):
         slider_max = self.ui.controls.slider_volume.maximum()
         self.mpv.set_volume(100.0 * (f**(val / slider_max) - 1) / (f - 1))
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def slider_seek(self):
         self.mpv.seek_absolute(self.ui.controls.slider_progress.value())
 
-    @pyqtSlot(dict)
+    @PyQt5.QtCore.pyqtSlot(dict)
     def resize_to_vid(self, video_params):
         if not self.resized:
             if 'w' not in video_params and 'h' not in video_params:
                 return
             self.resized = True
-            self.resize(QSize(video_params['w'],
-                              video_params['h'] + self.ui.control_bar.height() +
-                              self.menuBar().height()))
+            self.resize(PyQt5.QtCore.QSize(video_params['w'],
+                                           video_params['h'] + self.ui.control_bar.height() +
+                                           self.menuBar().height()))
 
-    @pyqtSlot()
+    @PyQt5.QtCore.pyqtSlot()
     def hide_cursor(self):
         if self.isFullScreen():
             self.setCursor(Qt.BlankCursor)
 
-    @pyqtSlot(plexdevices.media.BaseObject)
+    @PyQt5.QtCore.pyqtSlot(plexdevices.media.BaseObject)
     def queue(self, media_object):
         self.mpv.playlist_queue_item(media_object)
 
-    @pyqtSlot(plexdevices.media.BaseObject)
+    @PyQt5.QtCore.pyqtSlot(plexdevices.media.BaseObject)
     def play(self, media_object):
-        if self.mpv.plex_play_queue is None:
-            self.mpv.create_play_queue(media_object)
+        if not self.mpv:
+            return
+        # if self.mpv.plex_play_queue is None:
+        self.mpv.create_play_queue(media_object)
         logger.info('Player: playQueueID={}'.format(self.mpv.plex_play_queue.id))
 
-        self.setWindowTitle(utils.title(self.mpv.plex_current_item))
+        self.setWindowTitle(plexdesktop.utils.title(self.mpv.plex_current_item))
 
         if len(self.mpv.plex_current_item.media) == 1:
             url = self.mpv.plex_current_item.media[0].parts[0].resolve_key()
         else:
             options = [str(x.height) for x in self.mpv.plex_current_item.media]
-            choice, ok = QInputDialog.getItem(self, 'QInputDialog.getItem()',
-                                              'Stream:', options, 0, False)
+            choice, ok = PyQt5.QtWidgets.QInputDialog.getItem(self, 'PyQt5.QtWidgets.QInputDialog.getItem()',
+                                                              'Stream:', options, 0, False)
             if ok:
                 index = options.index(choice)
                 url = self.mpv.plex_current_item.media[index].parts[0].resolve_key()
@@ -393,8 +404,8 @@ class MPVPlayer(QMainWindow):
 
     # QT EVENTS ################################################################
     def closeEvent(self, event):
-        self.playlist.close()
         self.settings.setValue('last_volume', self.ui.controls.slider_volume.value())
+        self.playlist.quit()
         self.mpv.quit()
         self.mpv = None
 

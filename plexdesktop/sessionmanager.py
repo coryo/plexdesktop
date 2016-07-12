@@ -1,39 +1,46 @@
 import logging
 import pickle
-from PyQt5.QtCore import pyqtSignal, QObject
-from plexdesktop.settings import Settings
-from plexdesktop.utils import Location
+
 import plexdevices
+
+import PyQt5.QtCore
+
+import plexdesktop.settings
+import plexdesktop.utils
 
 logger = logging.getLogger('plexdesktop')
 
 
-class SessionManager(QObject):
-    done = pyqtSignal(bool, str)
-    active = pyqtSignal(bool)
-    shortcuts_changed = pyqtSignal()
-    shortcuts_loaded = pyqtSignal(int)
+class SessionManager(PyQt5.QtCore.QObject):
+    done = PyQt5.QtCore.pyqtSignal(bool, str)
+    active = PyQt5.QtCore.pyqtSignal(bool)
+    shortcuts_changed = PyQt5.QtCore.pyqtSignal()
+    shortcuts_loaded = PyQt5.QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.session = plexdevices.create_session()
         self.shortcuts = None
+        self.current_server = None
 
     @property
     def user(self):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         user = settings.value('user')
         return user
 
     @property
     def server(self):
-        settings = Settings()
-        last_server = settings.value('last_server')
+        if self.current_server is None:
+            settings = plexdesktop.settings.Settings()
+            last_server = settings.value('last_server')
+        else:
+            last_server = self.current_server
         server = self.find_server(last_server)
         return server if server is not None else (self.session.servers[0] if self.session.servers else None)
 
     def load_session(self):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         try:
             self.session = pickle.loads(settings.value('session'))
             self.active.emit(True)
@@ -42,7 +49,7 @@ class SessionManager(QObject):
             self.active.emit(False)
 
     def save_session(self):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         try:
             logger.info('SessionManager: saving session')
             settings.setValue('session', pickle.dumps(self.session))
@@ -56,7 +63,7 @@ class SessionManager(QObject):
             return None
 
     def create_session(self, user, passwd):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         try:
             logger.debug('SessionManager: creating session')
             self.session = plexdevices.create_session(user=user, password=passwd)
@@ -82,6 +89,7 @@ class SessionManager(QObject):
             logger.error('SessionManager: refresh_devices: ' + str(e))
             self.done.emit(False, str(e))
         else:
+            self.save_session()
             self.done.emit(True, '')
 
     def refresh_users(self):
@@ -95,7 +103,7 @@ class SessionManager(QObject):
             self.done.emit(True, '')
 
     def delete_session(self):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         settings.remove('session')
         settings.remove('user')
         settings.remove('last_server')
@@ -103,8 +111,9 @@ class SessionManager(QObject):
         self.active.emit(False)
 
     def switch_server(self, server):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         settings.setValue('last_server', server.client_identifier)
+        self.current_server = server.client_identifier
         self.shortcuts = Shortcuts(self.server)
         self.shortcuts.shortcuts_changed.connect(self.shortcuts_changed.emit)
         self.shortcuts.shortcuts_loaded.connect(self.shortcuts_loaded.emit)
@@ -121,7 +130,7 @@ class SessionManager(QObject):
             self.done.emit(True, '')
 
     def switch_user(self, userid, pin=None):
-        settings = Settings()
+        settings = plexdesktop.settings.Settings()
         try:
             logger.info('SessionManager: changing user.')
             self.session.switch_user(userid, pin=pin)
@@ -134,15 +143,15 @@ class SessionManager(QObject):
             self.done.emit(True, '')
 
 
-class Shortcuts(QObject):
-    shortcuts_changed = pyqtSignal()
-    shortcuts_loaded = pyqtSignal(int)
+class Shortcuts(PyQt5.QtCore.QObject):
+    shortcuts_changed = PyQt5.QtCore.pyqtSignal()
+    shortcuts_loaded = PyQt5.QtCore.pyqtSignal(int)
 
     def __init__(self, server, parent=None):
         super().__init__(parent)
         self.server = server
         self.shortcuts = {}
-        self.s = Settings()
+        self.s = plexdesktop.settings.Settings()
 
     def __contains__(self, location):
         return location in self.shortcuts.values()
@@ -186,5 +195,5 @@ class Shortcuts(QObject):
         """ Load the shortcuts from settings for the server """
         f = self.s.value('shortcuts-{}'.format(self.server.client_identifier))
         if f:
-            self.shortcuts = {k: Location(**v) for k, v in f.items()}
+            self.shortcuts = {k: plexdesktop.utils.Location(**v) for k, v in f.items()}
         self.shortcuts_loaded.emit(len(self.shortcuts))

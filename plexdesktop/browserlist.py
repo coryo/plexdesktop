@@ -1,63 +1,74 @@
 import logging
-import os
-from threading import Thread
-from PyQt5.QtWidgets import (QListView, QStyledItemDelegate, QApplication,
-                             QAbstractItemView, QMenu, QAction, QFileDialog,
-                             QInputDialog)
-from PyQt5.QtGui import (QPixmap, QPixmapCache, QCursor)
-from PyQt5.QtCore import (pyqtSignal, QObject, QSize, Qt, QThread,
-                          QAbstractListModel, QModelIndex, QPoint, QVariant)
-from plexdesktop.sqlcache import DB_THUMB, DB_IMAGE
-from plexdesktop.utils import *
-from plexdesktop.workers import ContainerWorker, QueueThumbWorker
-from plexdesktop.extra_widgets import PreferencesObjectDialog
-from plexdesktop.delegates import ListDelegate, TileDelegate
+import queue
+
 import plexdevices
+
+import PyQt5.QtWidgets
+import PyQt5.QtGui
+import PyQt5.QtCore
+
+import plexdesktop.components
+import plexdesktop.utils
+import plexdesktop.workers
+import plexdesktop.extra_widgets
+import plexdesktop.delegates
+
 logger = logging.getLogger('plexdesktop')
+Qt = PyQt5.QtCore.Qt
 
 
-class ListModel(QAbstractListModel):
-    operate = pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
-    new_item = pyqtSignal(QModelIndex)
-    working = pyqtSignal()
-    done = pyqtSignal()
-    new_container_titles = pyqtSignal(str, str)
-    new_container = pyqtSignal()
-    new_page = pyqtSignal()
-    work_thumbs = pyqtSignal()
+class ListModel(PyQt5.QtCore.QAbstractListModel):
+    work_container = PyQt5.QtCore.pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
+    work_thumbs = PyQt5.QtCore.pyqtSignal(queue.Queue)
+
+    new_item = PyQt5.QtCore.pyqtSignal(PyQt5.QtCore.QModelIndex)
+    new_container_titles = PyQt5.QtCore.pyqtSignal(str, str)
+    new_container = PyQt5.QtCore.pyqtSignal()
+    new_page = PyQt5.QtCore.pyqtSignal()
+    new_thumbs = PyQt5.QtCore.pyqtSignal()
+
+    working = PyQt5.QtCore.pyqtSignal()
+    done = PyQt5.QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.container = None
-        self.busy = False
-        # Container worker
-        self._worker_thread = QThread()
-        self._worker = ContainerWorker()
-        self._worker.moveToThread(self._worker_thread)
-        self._worker.result_ready.connect(self._add_container)
-        self._worker.finished.connect(self._done)
-        self.operate.connect(self._worker.run)
-        self.operate.connect(self.working.emit)
-        self._worker_thread.start()
-        # Thumbnail worker
-        self._thumb_thread = QThread()
-        self._thumb_worker = QueueThumbWorker()
-        self._thumb_worker.moveToThread(self._thumb_thread)
-        self._thumb_worker.result_ready.connect(self._update_thumb)
-        self._thumb_worker.finished.connect(DB_THUMB.commit)
-        self.work_thumbs.connect(self._thumb_worker.wakeup)
-        self._thumb_thread.start()
+        self.thumb_queue = queue.Queue()
+
+        self.container_thread = PyQt5.QtCore.QThread(self)
+        self.thumb_thread = PyQt5.QtCore.QThread(self)
+
+        self.container_worker = plexdesktop.workers.ContainerWorker()
+        self.thumb_worker = plexdesktop.workers.QueueThumbWorker()
+
+        self.container_worker.moveToThread(self.container_thread)
+        self.thumb_worker.moveToThread(self.thumb_thread)
+
+        self.container_worker.result_ready.connect(self._add_container)
+        self.container_worker.finished.connect(self._done)
+
+        self.thumb_worker.result_ready.connect(self._update_thumb)
+        # self.thumb_worker.finished.connect(DB_THUMB.commit)
+        self.thumb_worker.result_ready.connect(self.new_thumbs.emit)
+
+        self.work_container.connect(self.container_worker.run)
+        self.work_container.connect(self.working.emit)
+
+        self.work_thumbs.connect(self.thumb_worker.process)
+
+        self.container_thread.start()
+        self.thumb_thread.start()
+
+    def quit(self):
+        self.container_thread.quit()
+        self.container_thread.wait()
+        self.thumb_thread.quit()
+        self.thumb_thread.wait()
 
     def clear(self):
         self.beginResetModel()
         self.container = None
         self.endResetModel()
-
-    def quit(self):
-        logger.debug('BrowserList: ListModel: stop thread')
-        self._worker_thread.quit()
-        self._thumb_thread.quit()
-        DB_THUMB.commit()
 
     def _done(self):
         if self.container:
@@ -65,27 +76,32 @@ class ListModel(QAbstractListModel):
             self.new_container_titles.emit(t1, t2)
         self.done.emit()
 
-    def _add_container(self, container):
-        if self.container is None:
-            start_len = 0
-            self.beginInsertRows(QModelIndex(), 0, len(container) - 1)
+    def _add_container(self, container, page):
+        if page == 0:
+            self.clear()
+            self.beginInsertRows(PyQt5.QtCore.QModelIndex(), 0, len(container) - 1)
             self.container = container
             self.endInsertRows()
-            self.endResetModel()
+            self.page = page
             self.new_container.emit()
         else:
-            start_len = len(self.container.children)
+            self.beginInsertRows(PyQt5.QtCore.QModelIndex(), len(self.container),
+                                 len(self.container) + len(container) - 1)
             self.container.children += container.children
             self.endInsertRows()
+            self.page = page
             self.new_page.emit()
-        self.busy = False
+
+    def _update_thumb(self, img, index, media_item):
+        if media_item != self.data(index, Qt.UserRole) or not index.isValid():
+            # the list changed while we were getting the thumb, so don't set it.
+            return
+        self.setData(index, img, role=Qt.DecorationRole)
 
     def request_thumbs(self, indexes):
-        self._thumb_worker.add_many(indexes)
-        self.work_thumbs.emit()
-
-    def _update_thumb(self, img, index):
-        self.setData(index, img, role=Qt.DecorationRole)
+        for index in indexes:
+            self.thumb_queue.put(index)
+        self.work_thumbs.emit(self.thumb_queue)
 
     def set_container(self, container):
         self.beginResetModel()
@@ -94,28 +110,19 @@ class ListModel(QAbstractListModel):
         self.done.emit()
 
     def fetch_container(self, server, key, page=0, size=50, sort="", params={}):
-        if self.busy:
-            return
-        self.beginResetModel()
-        self.busy = True
         self.server = server
         self.key = key
-        self.page = page
         self.container_size = size
         self.sort = sort
         self.params = params
-        self.container = None
+        self.work_container.emit(server, key, page, size, sort, params)
 
-        self.operate.emit(self.server, self.key, self.page, self.container_size,
-                          self.sort, self.params)
-        self.page += 1
-
-    def rowCount(self, parent=QModelIndex()):
+    def rowCount(self, parent=PyQt5.QtCore.QModelIndex()):
         return 0 if self.container is None else len(self.container)
 
     def data(self, index, role=Qt.DisplayRole):
         if self.container is None:
-            return QVariant()
+            return PyQt5.QtCore.QVariant()
         if role == Qt.DisplayRole:
             try:
                 return self.container.children[index.row()].title
@@ -130,7 +137,7 @@ class ListModel(QAbstractListModel):
             try:
                 img = self.container.children[index.row()].user_data
             except (AttributeError, IndexError):
-                img = QPixmap()
+                img = PyQt5.QtGui.QPixmap()
             return img
 
     def setData(self, index, value, role):
@@ -149,14 +156,9 @@ class ListModel(QAbstractListModel):
                 len(self.container) < self.container.total_size)
 
     def fetchMore(self, parent):
-        start_len = len(self.container)
-        remaining = self.container.total_size - len(self.container)
-        items_to_fetch = min(self.container_size, remaining)
-        self.beginInsertRows(QModelIndex(), len(self.container),
-                             len(self.container) + items_to_fetch - 1)
-        self.operate.emit(self.server, self.key, self.page, self.container_size,
-                          self.sort, self.params)
         self.page += 1
+        self.work_container.emit(self.server, self.key, self.page, self.container_size,
+                                 self.sort, self.params)
 
     def has_thumb(self, index):
         try:
@@ -165,24 +167,29 @@ class ListModel(QAbstractListModel):
             return False
 
 
-class PlaylistView(QListView):
-    itemSelectionChanged = pyqtSignal(list)
-    request_thumbs = pyqtSignal(object)
-    play = pyqtSignal(plexdevices.media.BaseObject)
-    remove = pyqtSignal(list)
+class PlaylistView(PyQt5.QtWidgets.QListView):
+    itemSelectionChanged = PyQt5.QtCore.pyqtSignal(list)
+    request_thumbs = PyQt5.QtCore.pyqtSignal(object)
+    play = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    remove = PyQt5.QtCore.pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._model = ListModel(self)
         self.setModel(self._model)
-        self.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.setResizeMode(QListView.Adjust)
-        self.icon_size(24)
+        self.list_delegate = plexdesktop.delegates.ListDelegate(self)
+        self.setItemDelegate(self.list_delegate)
+        self.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.MultiSelection)
+        self.setResizeMode(PyQt5.QtWidgets.QListView.Adjust)
+        self.icon_size(32)
         self.setAlternatingRowColors(True)
         self.doubleClicked.connect(self.double_click)
         self.request_thumbs.connect(self.model().request_thumbs)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.context_menu)
+
+    def quit(self):
+        self.model().quit()
 
     def set_container(self, container):
         self.model().set_container(container)
@@ -190,7 +197,7 @@ class PlaylistView(QListView):
         self.request_thumbs.emit(indexes)
 
     def icon_size(self, x):
-        self.last_icon_size = QSize(x, x)
+        self.last_icon_size = PyQt5.QtCore.QSize(x, x)
         self.setIconSize(self.last_icon_size)
 
     def currentItem(self):
@@ -207,9 +214,6 @@ class PlaylistView(QListView):
     def double_click(self, index):
         self.play.emit(index.data(role=Qt.UserRole))
 
-    def closeEvent(self, event):
-        self.model().quit()
-
     def selectionChanged(self, selected, deselected):
         super().selectionChanged(selected, deselected)
         media = [index.data(role=Qt.UserRole) for index in selected.indexes()]
@@ -219,18 +223,18 @@ class PlaylistView(QListView):
         items = self.currentItems()
         if not items:
             return
-        menu = QMenu(self)
+        menu = PyQt5.QtWidgets.QMenu(self)
         if len(items) == 1:
-            play = QAction('Play', menu)
+            play = PyQt5.QtWidgets.QAction('Play', menu)
             play.triggered.connect(self.cm_play_item)
             play.setData(items[0])
             menu.addAction(play)
-        remove = QAction('Remove', menu)
+        remove = PyQt5.QtWidgets.QAction('Remove', menu)
         remove.triggered.connect(self.cm_remove_item)
         remove.setData(items)
         menu.addAction(remove)
         if not menu.isEmpty():
-            menu.exec_(QCursor.pos())
+            menu.exec_(PyQt5.QtGui.QCursor.pos())
 
     def cm_play_item(self):
         self.play.emit(self.sender().data())
@@ -239,33 +243,34 @@ class PlaylistView(QListView):
         self.remove.emit(self.sender().data())
 
 
-class ListView(QListView):
-    viewModeChanged = pyqtSignal()
-    itemDoubleClicked = pyqtSignal(plexdevices.media.BaseObject)
-    itemSelectionChanged = pyqtSignal(plexdevices.media.BaseObject)
-    container_request = pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
-    request_thumbs = pyqtSignal(object)
-    goto_location = pyqtSignal(Location)
-    queue = pyqtSignal(plexdevices.media.BaseObject)
-    play = pyqtSignal(plexdevices.media.BaseObject)
-    photo = pyqtSignal(plexdevices.media.Photo)
-    working = pyqtSignal()
-    finished = pyqtSignal()
-    image_selection = pyqtSignal(plexdevices.media.Photo)
-    metadata_selection = pyqtSignal(plexdevices.media.BaseObject)
-    new_titles = pyqtSignal(str, str)
+class ListView(PyQt5.QtWidgets.QListView):
+    viewModeChanged = PyQt5.QtCore.pyqtSignal()
+    itemDoubleClicked = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    itemSelectionChanged = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    container_request = PyQt5.QtCore.pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
+    request_thumbs = PyQt5.QtCore.pyqtSignal(object)
+    goto_location = PyQt5.QtCore.pyqtSignal(plexdesktop.utils.Location)
+    queue = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    play = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    photo = PyQt5.QtCore.pyqtSignal(plexdevices.media.Photo)
+    working = PyQt5.QtCore.pyqtSignal()
+    finished = PyQt5.QtCore.pyqtSignal()
+    image_selection = PyQt5.QtCore.pyqtSignal(plexdevices.media.Photo)
+    metadata_selection = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
+    new_titles = PyQt5.QtCore.pyqtSignal(str, str)
+    download = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._model = ListModel(parent=self)
+        self._model = ListModel(self)
         self.setModel(self._model)
         self._last_count = 0
-        self._player_state, self._photo_viewer_state = False, False
-        self.list_delegate = ListDelegate(self)
-        self.tile_delegate = TileDelegate(self)
+        # self._player_state, self._photo_viewer_state = False, False
+        self.list_delegate = plexdesktop.delegates.ListDelegate(self)
+        self.tile_delegate = plexdesktop.delegates.TileDelegate(self)
         self.setItemDelegate(self.list_delegate)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setResizeMode(QListView.Adjust)
+        self.setSelectionMode(PyQt5.QtWidgets.QAbstractItemView.SingleSelection)
+        self.setResizeMode(PyQt5.QtWidgets.QListView.Adjust)
         self.icon_size(32)
         self.setAlternatingRowColors(True)
 
@@ -277,26 +282,25 @@ class ListView(QListView):
         self.itemDoubleClicked.connect(self.item_double_clicked)
         self.itemSelectionChanged.connect(self.selection_changed)
         # Model signals
-        self._model.done.connect(self.visibleItemsChanged)
-        self._model.working.connect(self.working.emit)
-        self._model.done.connect(self.finished.emit)
-        self._model.new_container_titles.connect(self.new_titles.emit)
-        self._model._thumb_worker.result_ready.connect(self._resize)
+        self.model().done.connect(self.visibleItemsChanged)
+        self.model().working.connect(self.working.emit)
+        self.model().done.connect(self.finished.emit)
+        self.model().new_container_titles.connect(self.new_titles.emit)
+        self.model().new_thumbs.connect(self._resize)
 
         self.viewModeChanged.connect(self.visibleItemsChanged)
 
         self._resize_hack = True
 
+    def quit(self):
+        self.model().quit()
+
     def _resize(self):
-        if self.viewMode() == QListView.ListMode:
+        if self.viewMode() == PyQt5.QtWidgets.QListView.ListMode:
             return
         self.resize(self.width() + 1 if self._resize_hack else self.width() - 1, self.height())
         self._resize_hack = not self._resize_hack
-        self.updateGeometry()
-
-    def closeEvent(self, event):
-        self.model().quit()
-        super().closeEvent(event)
+        # self.updateGeometry()
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:
@@ -315,21 +319,21 @@ class ListView(QListView):
         self.model().clear()
 
     def toggle_view_mode(self):
-        if self.viewMode() == QListView.ListMode:
+        if self.viewMode() == PyQt5.QtWidgets.QListView.ListMode:
             self.setItemDelegate(self.tile_delegate)
-            self.setViewMode(QListView.IconMode)
+            self.setViewMode(PyQt5.QtWidgets.QListView.IconMode)
             self.bg_vertical = True
             self.setSpacing(10)
         else:
             self.setItemDelegate(self.list_delegate)
-            self.setViewMode(QListView.ListMode)
+            self.setViewMode(PyQt5.QtWidgets.QListView.ListMode)
             self.bg_vertical = False
             self.setSpacing(0)
         self.setAlternatingRowColors(not self.bg_vertical)
         self.viewModeChanged.emit()
 
     def icon_size(self, x):
-        self.last_icon_size = QSize(x, x)
+        self.last_icon_size = PyQt5.QtCore.QSize(x, x)
         self.setIconSize(self.last_icon_size)
         self.visibleItemsChanged()
 
@@ -353,20 +357,20 @@ class ListView(QListView):
 
     def moveCursor(self, cursorAction, modifiers):
         index = self.currentIndex()
-        if cursorAction == QAbstractItemView.MoveNext:
+        if cursorAction == PyQt5.QtWidgets.QAbstractItemView.MoveNext:
             i = self.model().index(index.row() + 1, index.column())
             return i if i.isValid() else self.model().index(0, 0)
-        elif cursorAction == QAbstractItemView.MovePrevious:
+        elif cursorAction == PyQt5.QtWidgets.QAbstractItemView.MovePrevious:
             i = self.model().index(index.row() - 1, index.column())
-            return i if i.isValid() else self.model().index(self.model().rowCount() - 1, 0)
+            return i if i.isValid() else self.model().index(0, 0)
         return super().moveCursor(cursorAction, modifiers)
 
     def next_item(self):
-        index = self.moveCursor(QAbstractItemView.MoveNext, Qt.NoModifier)
+        index = self.moveCursor(PyQt5.QtWidgets.QAbstractItemView.MoveNext, Qt.NoModifier)
         self.setCurrentIndex(index)
 
     def prev_item(self):
-        index = self.moveCursor(QAbstractItemView.MovePrevious, Qt.NoModifier)
+        index = self.moveCursor(PyQt5.QtWidgets.QAbstractItemView.MovePrevious, Qt.NoModifier)
         self.setCurrentIndex(index)
 
     def visibleItemsChanged(self):
@@ -377,11 +381,12 @@ class ListView(QListView):
         model = self.model()
         if not model.rowCount():
             return (0, [])
-        min_item = self.indexAt(QPoint(5, 5))
-        max_item = self.indexAt(QPoint(5, self.height() - 5))
-        if min_item is None:
+        # indexAt isn't a very reliable way of doing this.
+        min_item = self.indexAt(PyQt5.QtCore.QPoint(5, 5))
+        max_item = self.indexAt(PyQt5.QtCore.QPoint(5, self.height() - 5))
+        if not min_item.isValid():
             min_item = model.index(0)
-        if max_item is None:
+        if not max_item.isValid():
             max_item = model.index(model.rowCount() - 1)
         min_row, max_row = min_item.row(), max_item.row()
         if max_row < 0:
@@ -390,12 +395,12 @@ class ListView(QListView):
         return (max_row - min_row, (model.index(x) for x in range(min_row, max_row)))
 
     def preferences_prompt(self, item):
-        dialog = PreferencesObjectDialog(item, parent=self)
+        dialog = plexdesktop.extra_widgets.PreferencesObjectDialog(item, parent=self)
 
     def search_prompt(self, item):
-        text, ok = QInputDialog.getText(self, 'Search', 'query:')
+        text, ok = PyQt5.QtWidgets.QInputDialog.getText(self, 'Search', 'query:')
         if ok:
-            self.goto_location.emit(Location(item.key, params={'query': text}))
+            self.goto_location.emit(plexdesktop.utils.Location(item.key, params={'query': text}))
 
     def item_double_clicked(self, item):
         if isinstance(item, plexdevices.media.Directory):
@@ -404,7 +409,7 @@ class ListView(QListView):
             elif isinstance(item, plexdevices.media.PreferencesDirectory):
                 self.preferences_prompt(item)
             else:
-                self.goto_location.emit(Location(item.key))
+                self.goto_location.emit(plexdesktop.utils.Location(item.key))
         elif isinstance(item, plexdevices.media.MediaItem):
             if isinstance(item, (plexdevices.media.Movie, plexdevices.media.Episode,
                                  plexdevices.media.VideoClip, plexdevices.media.Track)):
@@ -425,65 +430,64 @@ class ListView(QListView):
     def context_menu(self, pos):
         index = self.currentIndex()
         item = index.data(role=Qt.UserRole)
-        # item = self.currentItem()
         if item is None:
             return
         data = (item, index)
-        menu = QMenu(self)
+        menu = PyQt5.QtWidgets.QMenu(self)
         actions = []
         if isinstance(item, plexdevices.media.MediaItem):
             if isinstance(item, (plexdevices.media.Movie, plexdevices.media.Episode,
                                  plexdevices.media.VideoClip, plexdevices.media.Track)):
-                main_action = QAction('Play', menu)
+                main_action = PyQt5.QtWidgets.QAction('Play', menu)
                 main_action.triggered.connect(self.cm_play)
                 actions.append(main_action)
-                if self._player_state and item.container.is_library:
-                    append_action = QAction('Add to Queue', menu)
+                if plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
+                    append_action = PyQt5.QtWidgets.QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)
             elif isinstance(item, plexdevices.media.Photo):
-                main_action = QAction('View Photo', menu)
+                main_action = PyQt5.QtWidgets.QAction('View Photo', menu)
                 main_action.triggered.connect(self.cm_play_photo)
-                save_action = QAction('Save', menu)
-                save_action.triggered.connect(self.cm_save_photo)
                 actions.append(main_action)
-                actions.append(save_action)
-            copy_action = QAction('Copy url', menu)
+            copy_action = PyQt5.QtWidgets.QAction('Copy url', menu)
             copy_action.triggered.connect(self.cm_copy)
             actions.append(copy_action)
+            save_action = PyQt5.QtWidgets.QAction('Download', menu)
+            save_action.triggered.connect(self.cm_save_item)
+            actions.append(save_action)
         elif isinstance(item, plexdevices.media.Directory):
             if isinstance(item, plexdevices.media.PreferencesDirectory):
-                main_action = QAction('Open', menu)
+                main_action = PyQt5.QtWidgets.QAction('Open', menu)
                 main_action.triggered.connect(self.cm_settings)
                 actions.append(main_action)
             else:
-                main_action = QAction('Open', menu)
+                main_action = PyQt5.QtWidgets.QAction('Open', menu)
                 main_action.triggered.connect(self.cm_open)
                 actions.append(main_action)
             if isinstance(item, (plexdevices.media.Show, plexdevices.media.Season,
                                  plexdevices.media.Album, plexdevices.media.Artist)):
-                action = QAction('Play all', menu)
+                action = PyQt5.QtWidgets.QAction('Play all', menu)
                 action.triggered.connect(self.cm_play)
                 actions.append(action)
-                if self._player_state and item.container.is_library:
-                    append_action = QAction('Add to Queue', menu)
+                if plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
+                    append_action = PyQt5.QtWidgets.QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)
 
         if item.markable:
-            mark_action = QAction('Mark unwatched', menu)
+            mark_action = PyQt5.QtWidgets.QAction('Mark unwatched', menu)
             mark_action.triggered.connect(self.cm_mark_unwatched)
-            mark_action2 = QAction('Mark watched', menu)
+            mark_action2 = PyQt5.QtWidgets.QAction('Mark watched', menu)
             mark_action2.triggered.connect(self.cm_mark_watched)
             actions.append(mark_action)
             actions.append(mark_action2)
 
         if item.has_parent:
-            open_action = QAction('goto: ' + plexdevices.types.get_type_string(item.parent_type), menu)
+            open_action = PyQt5.QtWidgets.QAction('goto: ' + plexdevices.types.get_type_string(item.parent_type), menu)
             open_action.triggered.connect(self.cm_open_parent)
             actions.append(open_action)
         if item.has_grandparent:
-            open_action = QAction('goto: ' + plexdevices.types.get_type_string(item.grandparent_type), menu)
+            open_action = PyQt5.QtWidgets.QAction('goto: ' + plexdevices.types.get_type_string(item.grandparent_type), menu)
             open_action.triggered.connect(self.cm_open_grandparent)
             actions.append(open_action)
 
@@ -492,14 +496,14 @@ class ListView(QListView):
             menu.addAction(action)
 
         if not menu.isEmpty():
-            menu.exec_(QCursor.pos())
+            menu.exec_(PyQt5.QtGui.QCursor.pos())
 
     def cm_queue(self):
         self.queue.emit(self.sender().data()[0])
 
     def cm_copy(self):
         url = self.sender().data()[0].resolve_url()
-        QApplication.clipboard().setText(url)
+        PyQt5.QtWidgets.QApplication.clipboard().setText(url)
 
     def cm_settings(self):
         self.preferences_prompt(self.sender().data()[0])
@@ -511,13 +515,13 @@ class ListView(QListView):
         self.photo.emit(self.sender().data()[0])
 
     def cm_open(self):
-        self.goto_location.emit(Location(self.sender().data()[0].key))
+        self.goto_location.emit(plexdesktop.utils.Location(self.sender().data()[0].key))
 
     def cm_open_parent(self):
-        self.goto_location.emit(Location(self.sender().data()[0].parent_key + '/children'))
+        self.goto_location.emit(plexdesktop.utils.Location(self.sender().data()[0].parent_key + '/children'))
 
     def cm_open_grandparent(self):
-        self.goto_location.emit(Location(self.sender().data()[0].grandparent_key + '/children'))
+        self.goto_location.emit(plexdesktop.utils.Location(self.sender().data()[0].grandparent_key + '/children'))
 
     def cm_mark_watched(self):
         item, index = self.sender().data()
@@ -529,39 +533,14 @@ class ListView(QListView):
         item.mark_unwatched()
         index.model().setData(index, None, Qt.UserRole)
 
-    def cm_save_photo(self):
+    def cm_save_item(self):
         item = self.sender().data()[0]
-        url = item.resolve_url()
-        ext = url.split('?')[0].split('/')[-1].split('.')[-1]
-        fname = '{}.{}'.format(''.join([x if x.isalnum() else "_" for x in item.title]), ext)
-        logger.debug(('Browser: save_photo: item={}, url={}, ext={}, '
-                      'fname={}').format(item, url, ext, fname))
-        save_file, filtr = QFileDialog.getSaveFileName(self, 'Open Directory',
-                                                       fname,
-                                                       'Images (*.{})'.format(ext))
-        if save_file:
-            self.working.emit()
-            t = Thread(target=self.write_image, args=(item, url, save_file))
-            t.start()
+        save_dir = PyQt5.QtWidgets.QFileDialog.getExistingDirectory(self, 'Open Directory')
+        if save_dir:
+            self.download.emit(item, save_dir)
 
-    def write_image(self, item, url, file):
-        try:
-            data = DB_IMAGE[url]
-            if data is None:
-                logger.debug('Browser: write_image: downloading image')
-                data = item.container.server.image(url)
-            else:
-                logger.debug('Browser: write_image: image was in the cache')
-        except Exception as e:
-            logger.error('Browser: write_image: ' + str(e))
-        else:
-            with open(os.path.abspath(file), 'wb') as f:
-                logger.info('Browser: write_image: writing to: {}'.format(file))
-                f.write(data)
-        self.finished.emit()
+    # def player_state(self, state):
+    #     self._player_state = state
 
-    def player_state(self, state):
-        self._player_state = state
-
-    def photo_viewer_state(self, state):
-        self._photo_viewer_state = state
+    # def photo_viewer_state(self, state):
+    #     self._photo_viewer_state = state

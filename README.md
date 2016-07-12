@@ -21,7 +21,7 @@ Windows
 
 ##### Run
 ```
-pip install pyqt5
+pip install PyQt5
 pip install plexdevices
 pip install git+https://github.com/coryo/python-mpv
 python main.py
@@ -34,13 +34,24 @@ python setup.py build
 ```
 
 
-Ubuntu 15.10
+Ubuntu 16.04
 ============
 
+##### Build libmpv
 ```
-sudo apt-get install python3-pyqt5
-sudo apt-get install libmpv1
+sudo apt install git devscripts equivs
+git clone https://github.com/mpv-player/mpv-build.git
+cd mpv-build
+mk-build-deps -s sudo -i
+echo --enable-libmpv-shared > mpv_options
+./rebuild -j4
+sudo ./install
+```
 
+##### Run
+```
+sudo apt install python3-pip
+pip3 install PyQt5
 pip3 install plexdevices
 pip3 install git+https://github.com/coryo/python-mpv
 
@@ -51,15 +62,13 @@ python3 main.py
 OSX
 ===
 
-libmpv is available through [Homebrew](http://brew.sh).
+  * [Python 3](https://www.python.org/downloads/mac-osx)
+  * libmpv is available through [Homebrew](http://brew.sh).
 
 ```
-brew install python3
-pip3 install pyqt5
-
-brew tap mpv-player/mpv
 brew install mpv --with-shared
 
+pip3 install PyQt5
 pip3 install plexdevices
 pip3 install git+https://github.com/coryo/python-mpv
 

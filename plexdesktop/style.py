@@ -1,17 +1,18 @@
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QObject, QFile, QCoreApplication
-from plexdesktop.settings import Settings
+import PyQt5.QtGui
+import PyQt5.QtCore
+
+import plexdesktop.utils
+import plexdesktop.settings
 """
 Usage:
 
-from plexdesktop.style import STYLE
-
-STYLE.widget.register(widget, 'icon-name')
-STYLE.refresh()
+style = plexdesktop.style.Style.Instance()
+style.widget.register(widget, 'icon-name')
+style.refresh()
 """
 
 
-class WidgetIconManager(QObject):
+class WidgetIconManager(PyQt5.QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -23,10 +24,10 @@ class WidgetIconManager(QObject):
 
     def switch_theme(self, name):
         for key, (item, off, on) in self.items.items():
-            icon = QIcon()
+            icon = PyQt5.QtGui.QIcon()
             icon.addFile(':/images/theme_{}/{}.png'.format(name, off))
             if on is not None:
-                icon.addFile(':/images/theme_{}/{}.png'.format(name, on), state=QIcon.On)
+                icon.addFile(':/images/theme_{}/{}.png'.format(name, on), state=PyQt5.QtGui.QIcon.On)
             item.setIcon(icon)
 
     def on_item_delete(self):
@@ -40,20 +41,21 @@ class WidgetIconManager(QObject):
         return hash(obj.objectName() + obj.parent().objectName())
 
 
-class QSSManager(QObject):
+class QSSManager(PyQt5.QtCore.QObject):
 
     def load_qss(self, qss):
-        file = QFile(qss)
-        file.open(QFile.ReadOnly)
+        file = PyQt5.QtCore.QFile(qss)
+        file.open(PyQt5.QtCore.QFile.ReadOnly)
         ss = bytes(file.readAll()).decode('latin-1')
-        app = QCoreApplication.instance()
+        app = PyQt5.QtCore.QCoreApplication.instance()
         app.setStyleSheet(ss)
 
     def switch_theme(self, theme):
         self.load_qss(theme)
 
 
-class Style(QObject):
+@plexdesktop.utils.Singleton
+class Style(PyQt5.QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,7 +75,7 @@ class Style(QObject):
             _add_switcher(theme)
 
     def theme(self, name):
-        s = Settings()
+        s = plexdesktop.settings.Settings()
         if name in self.themes:
             self.style.switch_theme(self.themes[name])
             self.widget.switch_theme(name)
@@ -87,4 +89,4 @@ class Style(QObject):
         self.widget.switch_theme(self.current)
 
 
-STYLE = Style()
+# STYLE = Style()
