@@ -17,7 +17,6 @@ Qt = PyQt5.QtCore.Qt
 
 class PhotoViewer(plexdesktop.components.ComponentWindow):
     operate = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
-    # closed = PyQt5.QtCore.pyqtSignal()
     prev_button = PyQt5.QtCore.pyqtSignal()
     next_button = PyQt5.QtCore.pyqtSignal()
 
@@ -30,6 +29,13 @@ class PhotoViewer(plexdesktop.components.ComponentWindow):
         self.ui.view.setScene(self.scene)
         self.resize(self.sizeHint())
 
+        self.pixmap = PyQt5.QtGui.QPixmap()
+        self.pixmap_item = PyQt5.QtWidgets.QGraphicsPixmapItem()
+        self.draw_timer = PyQt5.QtCore.QTimer()
+        self.draw_timer.setSingleShot(True)
+        self.draw_timer.setInterval(200)
+        self.draw_timer.timeout.connect(self.scale_pixmap)
+
         self.worker_thread = PyQt5.QtCore.QThread(self)
         self.worker_thread.start()
         self.worker = plexdesktop.workers.ImageWorker()
@@ -37,6 +43,7 @@ class PhotoViewer(plexdesktop.components.ComponentWindow):
         self.worker.moveToThread(self.worker_thread)
         self.operate.connect(self.worker.run)
         self.operate.connect(self.show_indicator)
+        self.worker.signal.connect(self.hide_indicator)
         self.worker_thread.finished.connect(self.worker_thread.deleteLater)
         self.worker_thread.finished.connect(self.worker.deleteLater)
 
@@ -67,7 +74,15 @@ class PhotoViewer(plexdesktop.components.ComponentWindow):
         super().closeEvent(event)
 
     def show_indicator(self):
-        self.scene.addWidget(PyQt5.QtWidgets.QProgressBar())
+        self.indicator = self.scene.addText(
+            'Loading', PyQt5.QtGui.QFont('Helvetica', 16, 1))
+        self.indicator.setDefaultTextColor(PyQt5.QtGui.QColor('red'))
+        viwport_center = self.ui.view.mapToScene(
+            self.ui.view.viewport().geometry().center())
+        self.indicator.setPos(viwport_center - self.indicator.boundingRect().center())
+
+    def hide_indicator(self):
+        self.scene.removeItem(self.indicator)
 
     def rotate_cw(self):
         self.ui.view.rotate(90)
@@ -98,11 +113,25 @@ class PhotoViewer(plexdesktop.components.ComponentWindow):
         buf.setData(img_data)
         reader.setDevice(buf)
         new_image = reader.read()
-        self.scene.clear()  # clear scene
-        item = self.scene.addPixmap(PyQt5.QtGui.QPixmap.fromImage(new_image))  # add new image
-        item.setTransformationMode(Qt.SmoothTransformation)
-        self.scene.setSceneRect(item.boundingRect())  # reset the scene rect
-        self.ui.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)  # fit to size
+        # scale to the last images size or the window size
+        prev_size = (self.size() if self.pixmap_item.pixmap().isNull() else
+                     self.scene.sceneRect().size().toSize() )
+        # store the full pixmap
+        self.pixmap = PyQt5.QtGui.QPixmap.fromImage(new_image)
+        # do the scaling
+        self.scale_pixmap(prev_size)
+        if not self.pixmap_item.scene():
+            self.scene.addItem(self.pixmap_item)
+
+    def scale_pixmap(self, size=None, fast=False):
+        if self.pixmap.isNull():
+            return
+        if size is None:
+            size = self.pixmap_item.boundingRect().size().toSize()
+        self.pixmap_item.setPixmap(
+            self.pixmap.scaled(size, Qt.KeepAspectRatio,
+                               Qt.FastTransformation if fast else Qt.SmoothTransformation))
+        self.scene.setSceneRect(self.pixmap_item.boundingRect())
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:  # window dragging
@@ -129,14 +158,23 @@ class PhotoViewer(plexdesktop.components.ComponentWindow):
         # fit contents only when scrollbars go away.
         if (not self.ui.view.verticalScrollBar().isVisible() and
                 not self.ui.view.horizontalScrollBar().isVisible()):
-            self.ui.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+            size = self.ui.view.viewport().geometry().size()
+            # use fast transforms on resize, do a smooth one after a timer
+            self.scale_pixmap(size, fast=True)
+            self.draw_timer.start()
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:
             degrees = event.angleDelta().y() / 8
             steps = int(degrees / 15)
             amount = 1 + (0.1 * steps)
-            self.ui.view.scale(amount, amount)
+
+            size = PyQt5.QtCore.QSize(
+                self.scene.sceneRect().width() * amount,
+                self.scene.sceneRect().height() * amount
+            )
+            self.scale_pixmap(size)
+
             event.accept()
         else:
             super().wheelEvent(event)
