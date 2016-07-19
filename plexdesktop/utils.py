@@ -83,21 +83,21 @@ class Location(object):
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
 
-    @staticmethod
-    def home():
-        return Location('/library/sections')
+    @classmethod
+    def home(cls):
+        return cls('/library/sections')
 
-    @staticmethod
-    def on_deck():
-        return Location('/library/onDeck')
+    @classmethod
+    def on_deck(cls):
+        return cls('/library/onDeck')
 
-    @staticmethod
-    def recently_added():
-        return Location('/library/recentlyAdded')
+    @classmethod
+    def recently_added(cls):
+        return cls('/library/recentlyAdded')
 
-    @staticmethod
-    def channels():
-        return Location('/channels/all')
+    @classmethod
+    def channels(cls):
+        return cls('/channels/all')
 
 
 class Singleton(object):
