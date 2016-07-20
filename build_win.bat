@@ -1,5 +1,5 @@
 SET OLDPATH=%PATH%
-CALL "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" amd64_x86
+CALL "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
 rmdir /S /Q build
 pyqtdeploycli --project plexdesktop-win.pdy build
 cd build
