@@ -1,3 +1,19 @@
+# plexdesktop
+# Copyright (c) 2016 Cory Parsons <parsons.cory@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging
 import queue
 
@@ -98,6 +114,10 @@ class ListModel(PyQt5.QtCore.QAbstractListModel):
             return
         self.setData(index, img, role=Qt.DecorationRole)
 
+    def request_thumb(self, index):
+        self.thumb_queue.put(index)
+        self.work_thumbs.emit(self.thumb_queue)
+
     def request_thumbs(self, indexes):
         for index in indexes:
             self.thumb_queue.put(index)
@@ -169,6 +189,7 @@ class ListModel(PyQt5.QtCore.QAbstractListModel):
 
 class PlaylistView(PyQt5.QtWidgets.QListView):
     itemSelectionChanged = PyQt5.QtCore.pyqtSignal(list)
+    request_thumb = PyQt5.QtCore.pyqtSignal(object)
     request_thumbs = PyQt5.QtCore.pyqtSignal(object)
     play = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
     remove = PyQt5.QtCore.pyqtSignal(list)
@@ -184,6 +205,7 @@ class PlaylistView(PyQt5.QtWidgets.QListView):
         self.icon_size(32)
         self.setAlternatingRowColors(True)
         self.doubleClicked.connect(self.double_click)
+        self.request_thumb.connect(self.model().request_thumb)
         self.request_thumbs.connect(self.model().request_thumbs)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.context_menu)
@@ -248,6 +270,7 @@ class ListView(PyQt5.QtWidgets.QListView):
     itemDoubleClicked = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
     itemSelectionChanged = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
     container_request = PyQt5.QtCore.pyqtSignal(plexdevices.device.Device, str, int, int, str, dict)
+    request_thumb = PyQt5.QtCore.pyqtSignal(object)
     request_thumbs = PyQt5.QtCore.pyqtSignal(object)
     goto_location = PyQt5.QtCore.pyqtSignal(plexdesktop.utils.Location)
     queue = PyQt5.QtCore.pyqtSignal(plexdevices.media.BaseObject)
@@ -277,6 +300,7 @@ class ListView(PyQt5.QtWidgets.QListView):
         self.doubleClicked.connect(self.double_click)
         self.container_request.connect(self.model().fetch_container)
         self.verticalScrollBar().valueChanged.connect(self.visibleItemsChanged)
+        self.request_thumb.connect(self.model().request_thumb)
         self.request_thumbs.connect(self.model().request_thumbs)
         self.customContextMenuRequested.connect(self.context_menu)
         self.itemDoubleClicked.connect(self.item_double_clicked)
@@ -309,11 +333,8 @@ class ListView(PyQt5.QtWidgets.QListView):
             super().wheelEvent(event)
 
     def resizeEvent(self, event):
-        n, indexes = self.visible_items()
-        if n != self._last_count:
-            self._last_count = n
-            self.request_thumbs.emit(indexes)
-        super().resizeEvent(event)
+        self.visible_items()
+        return super().resizeEvent(event)
 
     def clear(self):
         self.model().clear()
@@ -323,7 +344,7 @@ class ListView(PyQt5.QtWidgets.QListView):
             self.setItemDelegate(self.tile_delegate)
             self.setViewMode(PyQt5.QtWidgets.QListView.IconMode)
             self.bg_vertical = True
-            self.setSpacing(10)
+            self.setSpacing(4)
         else:
             self.setItemDelegate(self.list_delegate)
             self.setViewMode(PyQt5.QtWidgets.QListView.ListMode)
@@ -374,25 +395,25 @@ class ListView(PyQt5.QtWidgets.QListView):
         self.setCurrentIndex(index)
 
     def visibleItemsChanged(self):
-        n, indexes = self.visible_items()
-        self.request_thumbs.emit(indexes)
+        self.visible_items()
 
     def visible_items(self):
         model = self.model()
         if not model.rowCount():
             return (0, [])
-        # indexAt isn't a very reliable way of doing this.
-        min_item = self.indexAt(PyQt5.QtCore.QPoint(5, 5))
-        max_item = self.indexAt(PyQt5.QtCore.QPoint(5, self.height() - 5))
-        if not min_item.isValid():
-            min_item = model.index(0)
-        if not max_item.isValid():
-            max_item = model.index(model.rowCount() - 1)
-        min_row, max_row = min_item.row(), max_item.row()
-        if max_row < 0:
-            max_row = model.rowCount()
-        max_row = min(model.rowCount(), max_row + 1)
-        return (max_row - min_row, (model.index(x) for x in range(min_row, max_row)))
+
+        rect = self.rect()
+        visible = []
+
+        start = self.indexAt(PyQt5.QtCore.QPoint(15, 15))
+        for i in range(start.row() if start.isValid() else 0, model.rowCount()):
+            index = model.index(i)
+            if rect.intersects(self.visualRect(index)):
+                visible.append(index)
+            else:
+                if visible:
+                    break
+        self.request_thumbs.emit(visible)
 
     def preferences_prompt(self, item):
         dialog = plexdesktop.extra_widgets.PreferencesObjectDialog(item, parent=self)
@@ -441,7 +462,7 @@ class ListView(PyQt5.QtWidgets.QListView):
                 main_action = PyQt5.QtWidgets.QAction('Play', menu)
                 main_action.triggered.connect(self.cm_play)
                 actions.append(main_action)
-                if plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
+                if item.container.is_library:#plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
                     append_action = PyQt5.QtWidgets.QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)
@@ -469,7 +490,7 @@ class ListView(PyQt5.QtWidgets.QListView):
                 action = PyQt5.QtWidgets.QAction('Play all', menu)
                 action.triggered.connect(self.cm_play)
                 actions.append(action)
-                if plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
+                if item.container.is_library:# plexdesktop.components.ComponentManager.Instance().exists('video_player') and item.container.is_library:
                     append_action = PyQt5.QtWidgets.QAction('Add to Queue', menu)
                     append_action.triggered.connect(self.cm_queue)
                     actions.append(append_action)

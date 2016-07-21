@@ -1,3 +1,19 @@
+# plexdesktop
+# Copyright (c) 2016 Cory Parsons <parsons.cory@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import queue
 
 import PyQt5.QtWidgets
@@ -205,7 +221,8 @@ class ManualServerDialog(PyQt5.QtWidgets.QDialog):
         self.form.addRow(PyQt5.QtWidgets.QLabel('Address'), self.address)
         self.form.addRow(PyQt5.QtWidgets.QLabel('Port'), self.port)
         self.form.addRow(PyQt5.QtWidgets.QLabel('Access Token (optional)'), self.token)
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
+            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
@@ -241,7 +258,8 @@ class PreferencesObjectDialog(PyQt5.QtWidgets.QDialog):
             self.form.addRow(PyQt5.QtWidgets.QLabel(item['label']), input_widget)
             self.ids.append((item['id'], input_widget))
 
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
+            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
@@ -280,7 +298,7 @@ class SettingsDialog(PyQt5.QtWidgets.QDialog):
         self.form = PyQt5.QtWidgets.QFormLayout(self)
 
         i = PyQt5.QtWidgets.QComboBox()
-        i.addItems(plexdesktop.style.Style.Instance().themes.keys())
+        i.addItems(plexdesktop.style.Style.Instance().themes)
         i.setCurrentIndex(i.findText(s.value('theme')))
         self.form.addRow(PyQt5.QtWidgets.QLabel('theme'), i)
 
@@ -288,7 +306,17 @@ class SettingsDialog(PyQt5.QtWidgets.QDialog):
         bf.setValue(int(s.value('browser_font', 9)))
         self.form.addRow(PyQt5.QtWidgets.QLabel('browser font size'), bf)
 
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        icon_size = PyQt5.QtWidgets.QLineEdit(str(s.value('thumb_size', 240)))
+        icon_size.setValidator(PyQt5.QtGui.QIntValidator(0, 300))
+        self.form.addRow(PyQt5.QtWidgets.QLabel('thumbnail size'), icon_size)
+
+        widget_player = PyQt5.QtWidgets.QCheckBox()
+        widget_player.setCheckState(Qt.Checked if bool(int(s.value('widget_player', 0))) else Qt.Unchecked)
+        self.form.addRow(PyQt5.QtWidgets.QLabel('use widget player'), widget_player)
+
+        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
+            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel,
+            Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
@@ -300,3 +328,7 @@ class SettingsDialog(PyQt5.QtWidgets.QDialog):
             plexdesktop.style.Style.Instance().theme(theme)
 
             s.setValue('browser_font', bf.value())
+
+            s.setValue('thumb_size', int(icon_size.text()))
+
+            s.setValue('widget_player', 1 if widget_player.checkState() == Qt.Checked else 0)

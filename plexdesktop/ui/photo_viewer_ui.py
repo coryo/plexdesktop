@@ -79,4 +79,3 @@ class Ui_PhotoViewer(object):
         self.actionRefresh.setText(_translate("PhotoViewer", "Refresh"))
 
 from plexdesktop.extra_widgets import GraphicsView
-from . import resources_rc

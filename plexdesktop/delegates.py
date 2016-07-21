@@ -1,3 +1,19 @@
+# plexdesktop
+# Copyright (c) 2016 Cory Parsons <parsons.cory@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import plexdevices
 
 import PyQt5.QtWidgets
@@ -21,15 +37,20 @@ class BaseDelegate(PyQt5.QtWidgets.QStyledItemDelegate):
         self.summary_font_metrics = PyQt5.QtGui.QFontMetrics(self.title_font)
 
 
-def placeholder_thumb_generator(title, qsize):
-    """Returns a PyQt5.QtGui.QPixmap of size qsize with the first letter of each word in title"""
+def placeholder_thumb_generator(title, size=150):
+    """Returns a PyQt5.QtGui.QPixmap of size with the first letter of each word in title"""
+    initials = ' '.join([x[0] for x in title.split(' ') if len(x) > 2])
+    key = 'placeholder' + initials
+    img = PyQt5.QtGui.QPixmapCache.find(key)
+    if img:
+        return img
+    qsize = PyQt5.QtCore.QSize(size, size)
     circle_color = PyQt5.QtGui.QColor(50, 50, 50)
     text_color = PyQt5.QtGui.QColor(75, 75, 75)
     font = PyQt5.QtGui.QFont('Open Sans', qsize.height() / 4, weight=PyQt5.QtGui.QFont.Bold)
     # font_metrics = PyQt5.QtGui.QFontMetrics(font)
     rect = PyQt5.QtCore.QRect(PyQt5.QtCore.QPoint(0, 0), PyQt5.QtCore.QPoint(qsize.width(), qsize.height()))
     center = PyQt5.QtCore.QPoint(qsize.width() / 2, qsize.height() / 2)
-    initials = ' '.join([x[0] for x in title.split(' ') if len(x) > 2])
     img = PyQt5.QtGui.QPixmap(qsize)
     img.fill(Qt.transparent)
     p = PyQt5.QtGui.QPainter(img)
@@ -40,6 +61,7 @@ def placeholder_thumb_generator(title, qsize):
     p.drawEllipse(center, qsize.width() / 2 - 1, qsize.height() / 2 - 1)
     p.setPen(text_color)
     p.drawText(rect, Qt.AlignCenter | Qt.AlignVCenter, initials)
+    PyQt5.QtGui.QPixmapCache.insert(key, img)
     return img
 
 
@@ -107,20 +129,59 @@ def elide_text(painter, rect, string):
 
 class TileDelegate(BaseDelegate):
 
+    def summary_line_count(self, item):
+        summary_lines = 0
+        if isinstance(item, (plexdevices.media.Movie, plexdevices.media.Album,
+                             plexdevices.media.Track, plexdevices.media.Episode)):
+            if isinstance(item, plexdevices.media.Episode):
+                summary_lines = 2
+            else:
+                summary_lines = 1
+        return summary_lines
+
     def paint(self, painter, option, index):
         self.initStyleOption(option, index)
         item = index.data(role=Qt.UserRole)
         if item is None:
             return
+
         icon_size = self.parent().iconSize()
+
+        summary_lines = self.summary_line_count(item)
+
+        icon_rect = PyQt5.QtCore.QRect(
+            option.rect.topLeft(),
+            option.rect.topRight() + PyQt5.QtCore.QPoint(0, icon_size.height())
+        )
+
+        background_rect = PyQt5.QtCore.QRect(
+            option.rect.topLeft(),
+            icon_rect.bottomRight() +
+            PyQt5.QtCore.QPoint(0, self.title_font_metrics.height() +
+                                self.summary_font_metrics.height() * summary_lines)
+        )
+
+        # Background
+        if option.state & PyQt5.QtWidgets.QStyle.State_Selected:
+            painter.fillRect(background_rect, option.palette.highlight())
+        elif option.state & PyQt5.QtWidgets.QStyle.State_MouseOver:
+            brush = option.palette.base()
+            if brush.color().lightness() > 127:
+                brush.setColor(brush.color().darker(120))
+            else:
+                brush.setColor(brush.color().lighter(120))
+            painter.fillRect(background_rect, brush)
+
         # Icon
         thumb = index.data(role=Qt.DecorationRole)
-        if thumb is None or thumb.isNull():
-            thumb = placeholder_thumb_generator(item.title, icon_size)
-        scaled = thumb.scaledToHeight(icon_size.height(), Qt.SmoothTransformation)
-        draw_progress_bar(item, scaled, height=6)
-        draw_unwatched_indicator(item, scaled, size=0.20)
-        PyQt5.QtWidgets.QApplication.style().drawItemPixmap(painter, option.rect, Qt.AlignTop, scaled)
+        if not item.thumb:
+            thumb = placeholder_thumb_generator(item.title)
+            thumb = thumb.scaled(icon_size)
+        if not thumb.isNull():
+            scaled = thumb.scaledToHeight(icon_size.height(), Qt.SmoothTransformation)
+            draw_progress_bar(item, scaled, height=6)
+            draw_unwatched_indicator(item, scaled, size=0.20)
+            PyQt5.QtWidgets.QApplication.style().drawItemPixmap(painter, option.rect, Qt.AlignTop, scaled)
 
         # Title
         # title_font = QFont(option.font.family(), 9, weight=QFont.Bold)
@@ -146,13 +207,13 @@ class TileDelegate(BaseDelegate):
         painter.restore()
 
         # Line 2
-        if isinstance(item, (plexdevices.media.Episode, plexdevices.media.Movie,
-                             plexdevices.media.Album, plexdevices.media.Track)):
+        if summary_lines:
             painter.save()
-            if painter.pen().color().value() < 128:
-                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().lighter()))
+            if painter.pen().color().lightness() > 127:
+                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().darker()))
             else:
-                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().darker(150)))
+                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().lighter()))
+
             painter.setFont(self.summary_font)
             line2_rect = PyQt5.QtCore.QRect(line1_rect.bottomLeft(),
                                             line1_rect.bottomRight() + PyQt5.QtCore.QPoint(0, painter.fontMetrics().height()))
@@ -169,13 +230,13 @@ class TileDelegate(BaseDelegate):
             painter.restore()
 
         # Line 3
-        if isinstance(item, plexdevices.media.Episode):
+        if summary_lines >= 2:
             line3_text = 'S{} E{}'.format(item.parent_index, item.index)
             painter.save()
-            if painter.pen().color().value() < 128:
-                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().lighter()))
+            if painter.pen().color().lightness() > 127:
+                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().darker()))
             else:
-                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().darker(150)))
+                painter.setPen(PyQt5.QtGui.QPen(painter.pen().color().lighter()))
             painter.setFont(self.summary_font)
             line3_rect = PyQt5.QtCore.QRect(line2_rect.bottomLeft(),
                                             line2_rect.bottomRight() + PyQt5.QtCore.QPoint(0, painter.fontMetrics().height()))
@@ -183,23 +244,16 @@ class TileDelegate(BaseDelegate):
             painter.drawText(line3_rect, Qt.AlignLeft, elided_text)
             painter.restore()
 
-        # Selection Frame
-        if option.state & (PyQt5.QtWidgets.QStyle.State_Selected | PyQt5.QtWidgets.QStyle.State_MouseOver):
-            thickness = 1
-            painter.save()
-            painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QBrush(PyQt5.QtGui.QColor(204, 123, 25)), thickness, join=Qt.MiterJoin))
-            painter.drawRect(option.rect.left(), option.rect.top(),
-                             option.rect.width() - thickness, icon_size.height())
-            painter.restore()
-
     def sizeHint(self, option, index):
         icon_size = self.parent().iconSize()
-        text_height = self.title_font_metrics.height() + self.summary_font_metrics.height() * 2
+        item = index.data(role=Qt.UserRole)
+        summary_lines = self.summary_line_count(item)
+
+        text_height = self.title_font_metrics.height() + self.summary_font_metrics.height() * summary_lines
         thumb = index.data(role=Qt.DecorationRole)
         default = PyQt5.QtCore.QSize(icon_size.width(), icon_size.height() + text_height)
         if thumb is None or thumb.isNull():
             # Try and figure out the width before we have the thumb ...
-            item = index.data(role=Qt.UserRole)
             if isinstance(item, (plexdevices.media.Show, plexdevices.media.Season, plexdevices.media.Movie)):
                 ar = 0.66  # posters are 2:3
                 return PyQt5.QtCore.QSize(icon_size.width() * ar, icon_size.height() + text_height)
@@ -229,31 +283,34 @@ class ListDelegate(BaseDelegate):
         else:
             title_text = title(item)
 
-        # # Background
-        # if option.state & QStyle.State_Selected:
-        #     painter.fillRect(option.rect, option.palette.highlight())
+        # Background
+        if option.state & PyQt5.QtWidgets.QStyle.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        elif option.state & PyQt5.QtWidgets.QStyle.State_MouseOver:
+            brush = option.palette.base()
+            if brush.color().lightness() > 127:
+                brush.setColor(brush.color().darker(120))
+            else:
+                brush.setColor(brush.color().lighter(120))
+            painter.fillRect(option.rect, brush)
 
         # Icon
         if isinstance(item, plexdevices.hubs.Hub):
             scaled = PyQt5.QtCore.QSize(0, 0)
         else:
             thumb = index.data(role=Qt.DecorationRole)
-            if thumb is None or thumb.isNull():
-                thumb = placeholder_thumb_generator(title_text, self.parent().iconSize())
-            scaled = thumb.scaledToHeight(self.parent().iconSize().width(), Qt.SmoothTransformation)
-            draw_progress_bar(item, scaled, height=6)
-            draw_unwatched_indicator(item, scaled, size=0.20)
-            PyQt5.QtWidgets.QApplication.style().drawItemPixmap(painter, option.rect,
-                                                                Qt.AlignLeft | Qt.AlignVCenter,
-                                                                scaled)
-
-        # Selection Frame
-        if option.state & (PyQt5.QtWidgets.QStyle.State_Selected | PyQt5.QtWidgets.QStyle.State_MouseOver):
-            thickness = 1
-            painter.save()
-            painter.setPen(PyQt5.QtGui.QPen(PyQt5.QtGui.QBrush(PyQt5.QtGui.QColor(204, 123, 25)), thickness, join=Qt.MiterJoin))
-            painter.drawRect(PyQt5.QtCore.QRect(option.rect.topLeft(), option.rect.bottomRight() - PyQt5.QtCore.QPoint(1, 1)))
-            painter.restore()
+            if not item.thumb:
+                thumb = placeholder_thumb_generator(title_text)
+                thumb = thumb.scaled(self.parent().iconSize())
+            if thumb and not thumb.isNull():
+                scaled = thumb.scaledToHeight(self.parent().iconSize().width(), Qt.SmoothTransformation)
+                draw_progress_bar(item, scaled, height=6)
+                draw_unwatched_indicator(item, scaled, size=0.20)
+                PyQt5.QtWidgets.QApplication.style().drawItemPixmap(painter, option.rect,
+                                                                    Qt.AlignLeft | Qt.AlignVCenter,
+                                                                    scaled)
+            else:
+                scaled = self.parent().iconSize()
 
         # Title Line
         painter.save()
@@ -297,4 +354,4 @@ class ListDelegate(BaseDelegate):
     def sizeHint(self, option, index):
         if isinstance(index.data(role=Qt.UserRole), plexdevices.hubs.Hub):
             return super().sizeHint(option, index)
-        return PyQt5.QtCore.QSize(300, self.parent().iconSize().height() + 2 * 2)
+        return PyQt5.QtCore.QSize(300, self.parent().iconSize().height() + 2)

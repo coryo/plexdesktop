@@ -1,3 +1,19 @@
+# plexdesktop
+# Copyright (c) 2016 Cory Parsons <parsons.cory@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging
 
 import plexdevices
@@ -31,8 +47,14 @@ class Remote(plexdesktop.components.ComponentWindow):
         self.ui.setupUi(self)
 
         logger.info('Remote: Creating remote `{}` on port {} for player {}'.format(name, port, str(player)))
-        self.remote = PlexRemote(parent=self, player=player, name=name, port=port)
-        self.remote.timeline_subscribe()
+
+        try:
+            self.remote = PlexRemote(parent=self, player=player, name=name, port=port)
+            self.remote.timeline_subscribe()
+        except plexdevices.DeviceConnectionsError as e:
+            self.closed.emit(self.name)
+            raise
+
         self.session = session
         self.port = port
         self.remote.timeline_signal.connect(self.tl_handler)

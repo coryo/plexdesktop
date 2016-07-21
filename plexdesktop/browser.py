@@ -1,7 +1,24 @@
+# plexdesktop
+# Copyright (c) 2016 Cory Parsons <parsons.cory@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging
 import random
 
 import plexdevices
+import mpv
 
 import PyQt5.QtWidgets
 import PyQt5.QtCore
@@ -18,6 +35,7 @@ import plexdesktop.sessionmanager
 import plexdesktop.about
 import plexdesktop.photo_viewer
 import plexdesktop.player
+import plexdesktop.player_default
 import plexdesktop.remote
 
 logger = logging.getLogger('plexdesktop')
@@ -27,7 +45,7 @@ class Browser(plexdesktop.components.ComponentWindow):
     create_session = PyQt5.QtCore.pyqtSignal(str, str)
     refresh_devices = PyQt5.QtCore.pyqtSignal()
     refresh_users = PyQt5.QtCore.pyqtSignal()
-    change_user = PyQt5.QtCore.pyqtSignal(str, str)
+    change_user = PyQt5.QtCore.pyqtSignal(object, str)
     manual_add_server = PyQt5.QtCore.pyqtSignal(str, str, str, str)
     new_hub_search = PyQt5.QtCore.pyqtSignal(plexdevices.device.Server, str)
     location_changed = PyQt5.QtCore.pyqtSignal(plexdesktop.utils.Location)
@@ -38,6 +56,10 @@ class Browser(plexdesktop.components.ComponentWindow):
         self.ui.setupUi(self)
 
         self.session_manager = plexdesktop.sessionmanager.SessionManager()
+        self.sm_thread = PyQt5.QtCore.QThread(self)
+        self.session_manager.moveToThread(self.sm_thread)
+        self.session_manager.working.connect(self.ui.indicator.show)
+        self.sm_thread.start()
 
         self.photo_viewer, self.video_player = None, None
         self.container_size = 50
@@ -207,7 +229,7 @@ class Browser(plexdesktop.components.ComponentWindow):
         self.ui.sort.setEnabled(location.key.startswith('/library'))
 
         self.location = location
-        self.ui.list.add_container(self.session_manager.server, location.key, 0,
+        self.ui.list.add_container(self.session_manager.current_server, location.key, 0,
                                    self.container_size,
                                    self.ui.sort.itemData(location.sort),
                                    location.params)
@@ -226,13 +248,13 @@ class Browser(plexdesktop.components.ComponentWindow):
     @PyQt5.QtCore.pyqtSlot()
     def hub_search(self):
         query = self.ui.hub_search.text()
-        s = self.session_manager.server
+        s = self.session_manager.current_server
         if s is not None:
             self.new_hub_search.emit(s, query)
 
     @PyQt5.QtCore.pyqtSlot()
     def load_hubs(self):
-        self.ui.hub_tree.goto(self.session_manager.server, '/hubs')
+        self.ui.hub_tree.goto(self.session_manager.current_server, '/hubs')
 
     @PyQt5.QtCore.pyqtSlot(bool)
     def add_remove_shortcut(self, state):
@@ -265,33 +287,52 @@ class Browser(plexdesktop.components.ComponentWindow):
     def action_change_user(self, index):
         logger.info('Browser: switching user -> {}'.format(self.ui.users.currentText()))
         try:
-            user = self.session_manager.session.users[index]
-            user_id, user_auth = user['id'], bool(int(user['protected']))
+            last_index = self.ui.users.findData(self.session_manager.user)
+        except (ValueError, IndexError):
+            last_index = 0
+        try:
+            user = self.ui.users.itemData(index)
         except Exception as e:
             logger.error('Browser: unable to switch user. ' + str(e))
             self.ui_update_users_no_signal(last_index)
             return
+        print(last_index, self.session_manager.user, index, user)
         pin = None
-        if user_auth:
-            text, ok = PyQt5.QtWidgets.QInputDialog.getText(self, 'Switch User', 'PIN:',
-                                                            PyQt5.QtWidgets.QLineEdit.Password)
+        if user.protected:
+            text, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, 'Switch User', 'PIN:', PyQt5.QtWidgets.QLineEdit.Password)
             if ok:
                 pin = text
             else:
                 self.ui_update_users_no_signal(last_index)
                 return
-        logger.debug('Browser: userid={}'.format(user_id))
+        logger.debug('Browser: userid={}'.format(user.id))
 
         self.initialized = False
-        self.ui.indicator.show()
-        self.change_user.emit(user_id, pin)
+        self.change_user.emit(user, str(pin))
 
     def create_player(self, item):
+        s = plexdesktop.settings.Settings()
         cm = plexdesktop.components.ComponentManager.Instance()
-        if cm.exists(self.video_player):
-            player = cm.get(self.video_player)
-        else:
-            player = cm.create_component(plexdesktop.player.MPVPlayer)
+
+        widget_player = bool(int(s.value('widget_player', 0)))
+
+        if not widget_player:
+            player = cm.create_component(plexdesktop.player_default.MPVPlayer)
+            self.ui.list.queue.connect(player.queue)
+            player.play(item)
+            return
+
+        player = cm.get(self.video_player)
+        if not player:
+            try:
+                player = cm.create_component(plexdesktop.player.MPVPlayer)
+            except mpv.ApiVersionError as e:
+                plexdesktop.utils.msg_box('libmpv version error.\n{}'.format(e))
+                return
+            except mpv.LibraryNotLoadedError as e:
+                plexdesktop.utils.msg_box('libmpv error.\n{}'.format(e))
+                return
             self.ui.list.queue.connect(player.queue)
         player.show()
         player.raise_()
@@ -317,10 +358,12 @@ class Browser(plexdesktop.components.ComponentWindow):
     def action_launch_remote(self):
         player = self.sender().data()
         port = random.randint(8000, 9000)
+        logger.info('Browser: creating remote on port {}. player={}'.format(port, player))
         try:
-            logger.info('Browser: creating remote on port {}. player={}'.format(port, player))
-            remote = plexdesktop.components.ComponentManager.Instance().create_component(
-                plexdesktop.remote.Remote, session=self.session_manager.session, player=player, port=port)
+            cm = plexdesktop.components.ComponentManager.Instance()
+            cm.create_component(plexdesktop.remote.Remote,
+                                session=self.session_manager.session,
+                                player=player, port=port)
         except plexdevices.DeviceConnectionsError as e:
             logger.error('Browser: action_launch_remote: {}'.format(str(e)))
             plexdesktop.utils.msg_box(str(e))
@@ -330,7 +373,6 @@ class Browser(plexdesktop.components.ComponentWindow):
         d = plexdesktop.extra_widgets.LoginDialog(session=self.session_manager.session)
         if d.exec_() == PyQt5.QtWidgets.QDialog.Accepted:
             self.initialized = False
-            self.ui.indicator.show()
             username, password = d.data()
             self.create_session.emit(username.strip(), password.strip())
 
@@ -347,17 +389,12 @@ class Browser(plexdesktop.components.ComponentWindow):
         d = plexdesktop.extra_widgets.ManualServerDialog()
         if d.exec_() == PyQt5.QtWidgets.QDialog.Accepted:
             protocol, address, port, token = d.data()
-            self.ui.indicator.show()
             self.manual_add_server.emit(protocol, address, port, token)
 
     @PyQt5.QtCore.pyqtSlot()
     def action_reload_stylesheet(self):
-        pass
-        # app = QCoreApplication.instance()
-        # file = QFile(':/resources/dark.qss')
-        # file.open(QFile.ReadOnly)
-        # ss = bytes(file.readAll()).decode('latin-1')
-        # app.setStyleSheet(ss)
+        style = plexdesktop.style.Style.Instance()
+        style.refresh()
 
     @PyQt5.QtCore.pyqtSlot()
     def action_trim_image_cache(self):
@@ -369,12 +406,10 @@ class Browser(plexdesktop.components.ComponentWindow):
 
     @PyQt5.QtCore.pyqtSlot()
     def action_refresh_devices(self):
-        self.ui.indicator.show()
         self.refresh_devices.emit()
 
     @PyQt5.QtCore.pyqtSlot()
     def action_refresh_users(self):
-        self.ui.indicator.show()
         self.refresh_users.emit()
 
     @PyQt5.QtCore.pyqtSlot(bool, str)
@@ -439,17 +474,22 @@ class Browser(plexdesktop.components.ComponentWindow):
         self.ui.servers.clear()
         session = self.session_manager.session
         for server in session.servers:
-            self.ui.servers.addItem('{} - {}'.format(server.name, server.product),
-                                    server.client_identifier)
+            self.ui.servers.addItem(server.name, server)
         self.ui.servers.blockSignals(False)
 
     def ui_update_users(self):
         self.ui.users.blockSignals(True)
         self.ui.users.clear()
         session = self.session_manager.session
-        for user in session.users:
-            self.ui.users.addItem(user['title'], user['id'])
-            logger.debug('{} {}'.format(user['title'], user['id']))
+        for index, user in enumerate(session.users):
+            self.ui.users.addItem(user.title, user)
+            thumb_data = plexdesktop.sqlcache.DB_THUMB[user.thumb]
+            if thumb_data:
+                img = PyQt5.QtGui.QPixmap()
+                img.loadFromData(thumb_data)
+                icon = PyQt5.QtGui.QIcon(img)
+                self.ui.users.setItemIcon(index, icon)
+            logger.debug('{} {}'.format(user.title, user))
         self.ui.users.blockSignals(False)
         self.ui.users.setVisible(self.ui.users.count() > 0)
 
@@ -461,7 +501,8 @@ class Browser(plexdesktop.components.ComponentWindow):
             self.ui.lbl_path.setText('{} / {}'.format(t1[:25], t2[:25]))
 
     def ui_update_title(self):
-        self.setWindowTitle('{name} - plexdesktop v{v}'.format(v=__version__, name=self.session_manager.server.name))
+        self.setWindowTitle('{name} - plexdesktop v{v}'.format(
+            v=__version__, name=self.session_manager.current_server.name))
 
     @PyQt5.QtCore.pyqtSlot(plexdevices.media.BaseObject)
     def ui_update_metadata_panel(self, media_object):
@@ -497,34 +538,35 @@ class Browser(plexdesktop.components.ComponentWindow):
         self.ui.servers.blockSignals(False)
 
     def ui_update_session(self):
-        session = self.session_manager.session
-        server = self.session_manager.server
+        sm = self.session_manager
+
         self.ui.menuRemotes.clear()
         self.ui_update_servers()
         self.ui_update_users()
-        try:
-            self.ui_update_servers_no_signal(session.servers.index(server))
-        except Exception as e:
-            logger.error('Browser: no servers. {}'.format(e))
 
-        try:
-            self.ui_update_users_no_signal(self.ui.users.findData(self.session_manager.user))
-        except Exception as e:
-            logger.error('Browser: no users. {}'.format(e))
+        last_server = [x for x in range(self.ui.servers.count()) if
+                       self.ui.servers.itemData(x) == sm.current_server]
+        self.ui_update_servers_no_signal(last_server[0] if last_server else -1)
 
-        for player in session.players:
+        last_user = [x for x in range(self.ui.users.count()) if
+                     self.ui.users.itemData(x) == sm.user]
+        self.ui_update_users_no_signal(last_user[0] if last_user else -1)
+
+        for player in sm.session.players:
             action = PyQt5.QtWidgets.QAction(str(player), self.ui.menuRemotes)
             action.setData(player)
             action.triggered.connect(self.action_launch_remote)
             self.ui.menuRemotes.addAction(action)
 
         if not self.initialized:
-            self.initialize(self.session_manager.server)
+            self.initialize(sm.current_server)
 
     # QT Events ################################################################
     def closeEvent(self, event):
         self.ui.list.quit()
         self.ui.hub_tree.quit()
+        self.sm_thread.quit()
+        self.sm_thread.wait()
         self._shutdown()
         super().closeEvent(event)
 

@@ -431,6 +431,9 @@
    <property name="text">
     <string>&amp;Reload Stylesheet</string>
    </property>
+   <property name="shortcut">
+    <string>F12</string>
+   </property>
   </action>
   <action name="actionAdd_Server">
    <property name="text">
@@ -612,8 +615,6 @@
    <header>plexdesktop.hubtree.h</header>
   </customwidget>
  </customwidgets>
- <resources>
-  <include location="../resources.qrc"/>
- </resources>
+ <resources/>
  <connections/>
 </ui>

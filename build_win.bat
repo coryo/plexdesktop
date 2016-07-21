@@ -11,6 +11,8 @@ del release\*.exp
 del release\*.lib
 del release\*.res
 cd ..
+xcopy resources build\release\resources /S /I
 xcopy cacert.pem build\release
 xcopy mpv-1.dll build\release
+xcopy input.conf build\release
 SET PATH=%OLDPATH%

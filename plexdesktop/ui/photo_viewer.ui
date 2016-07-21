@@ -130,8 +130,6 @@
    <header>plexdesktop.extra_widgets.h</header>
   </customwidget>
  </customwidgets>
- <resources>
-  <include location="../resources.qrc"/>
- </resources>
+ <resources/>
  <connections/>
 </ui>

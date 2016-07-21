@@ -161,4 +161,3 @@ class Ui_Player(object):
         self.lbl_divider.setText(_translate("Player", "/"))
 
 from plexdesktop.extra_widgets import TrackSelector
-from . import resources_rc

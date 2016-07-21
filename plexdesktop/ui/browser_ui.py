@@ -281,6 +281,7 @@ class Ui_Browser(object):
         self.actionLogout.setText(_translate("Browser", "Log&out"))
         self.actionAbout.setText(_translate("Browser", "&About"))
         self.actionReload_Stylesheet.setText(_translate("Browser", "&Reload Stylesheet"))
+        self.actionReload_Stylesheet.setShortcut(_translate("Browser", "F12"))
         self.actionAdd_Server.setText(_translate("Browser", "Add Server..."))
         self.actionTrim_Image_Cache.setText(_translate("Browser", "Trim Image Cache"))
         self.actionTrim_Thumb_Cache.setText(_translate("Browser", "Trim Thumb Cache"))
@@ -316,4 +317,3 @@ class Ui_Browser(object):
 from plexdesktop.browserlist import ListView
 from plexdesktop.extra_widgets import HubSearch
 from plexdesktop.hubtree import TreeView
-from . import resources_rc
