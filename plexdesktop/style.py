@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import PyQt5.QtGui
-import PyQt5.QtCore
+from PyQt5 import QtCore, QtGui
 
 import plexdesktop.utils
 import plexdesktop.settings
+
 """
 Usage:
 
@@ -28,7 +28,7 @@ style.refresh()
 """
 
 
-class WidgetIconManager(PyQt5.QtCore.QObject):
+class WidgetIconManager(QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,10 +40,10 @@ class WidgetIconManager(PyQt5.QtCore.QObject):
 
     def switch_theme(self, name):
         for key, (item, off, on) in self.items.items():
-            icon = PyQt5.QtGui.QIcon()
+            icon = QtGui.QIcon()
             icon.addFile('resources/themes/{}/images/{}.png'.format(name, off))
             if on is not None:
-                icon.addFile('resources/themes/{}/images/{}.png'.format(name, on), state=PyQt5.QtGui.QIcon.On)
+                icon.addFile('resources/themes/{}/images/{}.png'.format(name, on), state=QtGui.QIcon.On)
             item.setIcon(icon)
 
     def on_item_delete(self):
@@ -57,13 +57,13 @@ class WidgetIconManager(PyQt5.QtCore.QObject):
         return hash(obj.objectName() + obj.parent().objectName())
 
 
-class QSSManager(PyQt5.QtCore.QObject):
+class QSSManager(QtCore.QObject):
     def load_qss(self, theme):
         path = 'resources/themes/{}/style.qss'.format(theme)
-        file = PyQt5.QtCore.QFile(path)
-        file.open(PyQt5.QtCore.QFile.ReadOnly)
+        file = QtCore.QFile(path)
+        file.open(QtCore.QFile.ReadOnly)
         ss = bytes(file.readAll()).decode('latin-1')
-        app = PyQt5.QtCore.QCoreApplication.instance()
+        app = QtCore.QCoreApplication.instance()
         app.setStyleSheet(ss)
         self.current = ss
 
@@ -72,7 +72,7 @@ class QSSManager(PyQt5.QtCore.QObject):
 
 
 @plexdesktop.utils.Singleton
-class Style(PyQt5.QtCore.QObject):
+class Style(QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -102,6 +102,3 @@ class Style(PyQt5.QtCore.QObject):
     def refresh(self):
         self.widget.switch_theme(self.current)
         self.style.switch_theme(self.current)
-
-
-# STYLE = Style()

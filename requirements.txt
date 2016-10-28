@@ -1,0 +1,3 @@
+diskcache
+-e git://github.com/coryo/plexdevices.git#egg=plexdevices
+-e git://github.com/coryo/python-mpv.git#egg=mpv

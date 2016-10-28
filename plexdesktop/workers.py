@@ -15,141 +15,222 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import hashlib
 import logging
 import time
 
 import requests
 import plexdevices
 
-import PyQt5.QtCore
-import PyQt5.QtGui
+from PyQt5 import QtCore, QtGui
 
 import plexdesktop.sqlcache
 from plexdesktop.settings import Settings
 
 logger = logging.getLogger('plexdesktop')
-Qt = PyQt5.QtCore.Qt
 
 
-class ContainerWorker(PyQt5.QtCore.QObject):
-    result_ready = PyQt5.QtCore.pyqtSignal(plexdevices.media.MediaContainer, int)
-    finished = PyQt5.QtCore.pyqtSignal()
+class ContainerWorker(QtCore.QObject):
+    result_ready = QtCore.pyqtSignal(plexdevices.media.MediaContainer)
+    container_updated = QtCore.pyqtSignal(plexdevices.media.MediaContainer, int)
+    finished = QtCore.pyqtSignal()
 
     def run(self, server, key, page=0, size=20, sort="", params={}):
-        logger.debug(('BrowserList: fetching container: key={}, server={}, '
+        logger.debug(('ContainerWorker: fetching container: key={}, server={}, '
                       'page={}, size={}, sort={}, params={}').format(key, server, page,
                                                                      size, sort, params))
         p = {} if not sort else {'sort': sort}
         if params:
             p.update(params)
         try:
-            data = server.container(key, page=page, size=size, params=p)
-        except plexdevices.DeviceConnectionsError as e:
-            logger.error('BrowserList: ' + str(e))
+            container = server.media_container(key, size, page, p, timeout=5)
+        except (ConnectionError, requests.exceptions.RequestException) as e:
+            logger.error('ContainerWorker: {}, {}'.format(repr(e), e))
         else:
-            logger.debug('BrowserList: url=' + server.active.url)
-            container = plexdevices.media.MediaContainer(server, data)
-            self.result_ready.emit(container, page)
+            self.result_ready.emit(container)
         self.finished.emit()
 
+    def fetch_more(self, container):
+        start_len = len(container)
+        try:
+            container.fetch_more()
+        except (ConnectionError, requests.exceptions.RequestException) as e:
+            logger.error('ContainerWorker: fetch_more(): {}'.format(e))
+        else:
+            self.container_updated.emit(container, len(container) - start_len)
+        self.finished.emit()
 
-class HubWorker(PyQt5.QtCore.QObject):
-    result_ready = PyQt5.QtCore.pyqtSignal(plexdevices.hubs.HubsContainer)
-    finished = PyQt5.QtCore.pyqtSignal()
+    # def fetch_next_page_object(self, container):
+    #     start_len = len(container)
+    #     try:
+    #         container.fetch_next_page_object()
+    #     except (ConnectionError, requests.exceptions.RequestException) as e:
+    #         logger.error('ContainerWorker: fetch_more(): {}'.format(e))
+    #     else:
+    #         self.container_updated.emit(container, len(container) - start_len)
+    #     self.finished.emit()
+
+
+class HubWorker(QtCore.QObject):
+    result_ready = QtCore.pyqtSignal(plexdevices.hubs.HubsContainer)
+    finished = QtCore.pyqtSignal()
 
     def run(self, server, key, params={}):
-        logger.debug(('BrowserList: fetching container: key={}'.format(key)))
+        logger.debug(('HubWorker: fetching container: key={}'.format(key)))
         try:
-            data = server.hub(key, params=params)
-        except plexdevices.DeviceConnectionsError as e:
-            logger.error('BrowserList: ' + str(e))
+            hub = server.hub(key, params=params)
+        except (ConnectionError, requests.exceptions.RequestException) as e:
+            logger.error('HubWorker: ' + str(e))
         else:
-            logger.debug('BrowserList: url=' + server.active.url)
-            self.result_ready.emit(data)
+            logger.debug('HubWorker: url=' + server.active.url)
+            self.result_ready.emit(hub)
         self.finished.emit()
 
 
-class ImageWorker(PyQt5.QtCore.QObject):
-    signal = PyQt5.QtCore.pyqtSignal(bytes)
+class ImageWorker(QtCore.QObject):
+    signal = QtCore.pyqtSignal(QtCore.QByteArray)
 
     def run(self, photo_object):
         url = photo_object.media[0].parts[0].resolve_key()
         logger.info('ImageWorker: ' + url)
-        img_data = plexdesktop.sqlcache.DB_IMAGE[url]
-        if img_data is None:
-            img_data = photo_object.container.server.image(url)
-            plexdesktop.sqlcache.DB_IMAGE[url] = img_data
-        plexdesktop.sqlcache.DB_IMAGE.commit()
-        self.signal.emit(img_data)
+        with plexdesktop.sqlcache.db_image() as cache:
+            if url in cache:
+                img_data = cache[url]
+            else:
+                try:
+                    res = photo_object.container.server.image(url)
+                except (ConnectionError, requests.exceptions.RequestException) as e:
+                    logger.error('ImageWorker: {}'.format(e))
+                    return
+                else:
+                    img_data = res.content
+                    cache[url] = img_data
+        self.signal.emit(QtCore.QByteArray(img_data))
 
 
-class ThumbWorker(PyQt5.QtCore.QObject):
-    result_ready = PyQt5.QtCore.pyqtSignal(PyQt5.QtGui.QPixmap, PyQt5.QtCore.QModelIndex)
-    finished = PyQt5.QtCore.pyqtSignal()
+# class ThumbTask(QtCore.QRunnable):
 
-    def __init__(self, index, parent=None):
+#     def __init__(self, receiver, item, row):
+#         super().__init__()
+#         self.receiver = receiver
+#         self.item = item
+#         self.row = row
+#         self.setAutoDelete(True)
+#         self.thumb_size = 240
+
+#     def run(self):
+#         if not self.item:
+#             return
+#         url = self.item.thumb
+#         if not url:
+#             return
+#         img = QtGui.QPixmapCache.find(url)
+#         if img:
+#             return
+#         with plexdesktop.sqlcache.db_thumb() as cache:
+#             if url in cache:
+#                 img_data = cache[url]
+#             else:  # not in cache, fetch from server
+#                 try:
+#                     if self.item.container.is_library:
+#                         res = self.item.container.server.image(
+#                             url, self.thumb_size, self.thumb_size, timeout=5)
+#                     else:
+#                         res = self.item.container.server.image(url, timeout=5)
+#                 except (ConnectionError, requests.exceptions.RequestException) as e:
+#                     logger.error('QueueThumbWorker: {}'.format(e))
+#                     return
+#                 else:
+#                     img_data = res.content
+#                     cache[url] = img_data
+#             img = QtGui.QPixmap()
+#             img.loadFromData(img_data)
+#             QtGui.QPixmapCache.insert(url, img)
+#             QtCore.QMetaObject.invokeMethod(
+#                 self.receiver,
+#                 "_update_thumb",
+#                 QtCore.Qt.QueuedConnection,
+#                 QtCore.Q_ARG(int, self.row),
+#                 QtCore.Q_ARG(object, self.item)
+#             )
+
+
+class QueueThumbWorker(QtCore.QObject):
+    result_ready = QtCore.pyqtSignal(int, plexdevices.media.BaseObject)
+    finished = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.index = index
+        s = Settings()
+        self.thumb_size = int(s.value('thumb_size', 240))
 
-    def start(self):
-        index = self.index
-        media_object = index.data(role=Qt.UserRole)
-        if media_object is None:
-            self.finished.emit()
+    def get_thumb(self, item, row):
+        if not item:
             return
-        url = media_object.thumb
-        if url is None or getattr(media_object, 'user_data', False):
-            self.finished.emit()
+        url = item.thumb
+        if not url:
             return
-        # key = media_object.container.server.client_identifier + url
-        # key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
-        img = PyQt5.QtGui.QPixmapCache.find(media_object.key)
-        if img is None:
-            img_data = plexdesktop.sqlcache.DB_THUMB[url]
-            if img_data is None:  # not in cache, fetch from server
-                img_data = media_object.container.server.image(url, w=240, h=240)
-                plexdesktop.sqlcache.DB_THUMB[url] = img_data
-            img = PyQt5.QtGui.QPixmap()
+        img = QtGui.QPixmapCache.find(url)
+        if img:
+            return
+        with plexdesktop.sqlcache.db_thumb() as cache:
+            if url in cache:
+                img_data = cache[url]
+            else:  # not in cache, fetch from server
+                try:
+                    if item.container.is_library:
+                        res = item.container.server.image(
+                            url, self.thumb_size, self.thumb_size, timeout=5)
+                    else:
+                        res = item.container.server.image(url, timeout=5)
+                except (ConnectionError, requests.exceptions.RequestException) as e:
+                    logger.error('QueueThumbWorker: {}'.format(e))
+                    return
+                else:
+                    img_data = res.content
+                    cache[url] = img_data
+
+            img = QtGui.QPixmap()
             img.loadFromData(img_data)
-            PyQt5.QtGui.QPixmapCache.insert(media_object.key, img)
-        self.result_ready.emit(img, index)
-        self.finished.emit()
-
-
-class QueueThumbWorker(PyQt5.QtCore.QObject):
-    result_ready = PyQt5.QtCore.pyqtSignal(
-        PyQt5.QtGui.QPixmap, PyQt5.QtCore.QModelIndex, plexdevices.media.BaseObject)
-    finished = PyQt5.QtCore.pyqtSignal()
+            QtGui.QPixmapCache.insert(url, img)
+            self.result_ready.emit(row, item)
 
     def process(self, queue):
+        """Load images into the QPixmapCache"""
         s = Settings()
-        thumb_size = s.value('thumb_size', 240)
-        while not queue.empty():
-            index = queue.get()
-            media_object = index.data(role=Qt.UserRole)
-            if media_object is None:
+        thumb_size = int(s.value('thumb_size', 200))
+        cache = plexdesktop.sqlcache.db_thumb()
+        # while True:
+        for (media_object, row) in iter(queue.get, None):
+            if not media_object:
                 continue
             url = media_object.thumb
-            if url is None or getattr(media_object, 'user_data', False):
+            if not url:
                 continue
-            key = media_object.container.server.client_identifier + url
-            key_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
-            img = PyQt5.QtGui.QPixmapCache.find(key_hash)
-            if img is None:
-                img_data = plexdesktop.sqlcache.DB_THUMB[url]
-                if img_data is None:  # not in cache, fetch from server
-                    img_data = media_object.container.server.image(url, w=thumb_size, h=thumb_size)
-                    plexdesktop.sqlcache.DB_THUMB[url] = img_data
-                img = PyQt5.QtGui.QPixmap()
-                img.loadFromData(img_data)
-                PyQt5.QtGui.QPixmapCache.insert(key_hash, img)
-            queue.task_done()
-            self.result_ready.emit(img, index, media_object)
-        plexdesktop.sqlcache.DB_THUMB.commit()
+            if url in cache:
+                img_data = cache[url]
+            else:  # not in cache, fetch from server
+                try:
+                    if media_object.container.is_library:
+                        res = media_object.container.server.image(
+                            url, thumb_size, thumb_size, timeout=5)
+                    else:
+                        res = media_object.container.server.image(url, timeout=5)
+                except (ConnectionError, requests.exceptions.RequestException) as e:
+                    logger.error('QueueThumbWorker: {}'.format(e))
+                    cache.close()
+                    continue
+                else:
+                    img_data = res.content
+                    cache[url] = img_data
+
+            img = QtGui.QPixmap()
+            img.loadFromData(img_data)
+            QtGui.QPixmapCache.insert(url, img)
+            self.result_ready.emit(row, media_object)
+        # cache.close()
 
 
-class DownloadJob(PyQt5.QtCore.QObject):
+class DownloadJob(QtCore.QObject):
     def __init__(self, mutex, item, destination, parent=None):
         super().__init__(parent)
         self.id = hash(item)
@@ -157,9 +238,9 @@ class DownloadJob(PyQt5.QtCore.QObject):
         self.destination = destination
         self.cancelled = False
         self.paused = False
-        self._pause = PyQt5.QtCore.QWaitCondition()
+        self._pause = QtCore.QWaitCondition()
 
-        self.thread = PyQt5.QtCore.QThread()
+        self.thread = QtCore.QThread()
         self.worker = DownloadWorker(mutex)
         self.worker.moveToThread(self.thread)
         self.thread.start()
@@ -185,18 +266,18 @@ class DownloadJob(PyQt5.QtCore.QObject):
         self._pause.wakeAll()
 
 
-class DownloadWorker(PyQt5.QtCore.QObject):
-    progress = PyQt5.QtCore.pyqtSignal(DownloadJob, int, int)
-    canceled = PyQt5.QtCore.pyqtSignal(DownloadJob)
-    complete = PyQt5.QtCore.pyqtSignal(DownloadJob)
-    paused = PyQt5.QtCore.pyqtSignal(DownloadJob)
+class DownloadWorker(QtCore.QObject):
+    progress = QtCore.pyqtSignal(DownloadJob, int, int)
+    canceled = QtCore.pyqtSignal(DownloadJob)
+    complete = QtCore.pyqtSignal(DownloadJob)
+    paused = QtCore.pyqtSignal(DownloadJob)
 
     def __init__(self, mutex, parent=None):
         super().__init__(parent)
         self.mutex = mutex
 
     def download_file(self, queue, block_size=8192):
-        locker = PyQt5.QtCore.QMutexLocker(self.mutex)
+        locker = QtCore.QMutexLocker(self.mutex)
         while not queue.empty():
             job = queue.get()
             url = job.item.resolve_url()

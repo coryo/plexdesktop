@@ -15,5 +15,5 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __title__ = 'plexdesktop'
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 __author__ = 'Cory Parsons'

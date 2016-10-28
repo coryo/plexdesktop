@@ -18,19 +18,18 @@ import logging
 
 import plexdevices
 
-import PyQt5.QtCore
-import PyQt5.QtGui
+from PyQt5 import QtCore, QtGui
 
 import plexdesktop.ui.remote_ui
 import plexdesktop.components
 
 logger = logging.getLogger('plexdesktop')
-Qt = PyQt5.QtCore.Qt
+Qt = QtCore.Qt
 
 
-class PlexRemote(PyQt5.QtCore.QObject, plexdevices.remote.Remote):
-    """subclass plexdevices.Remote and PyQt5.QtCore.QObject to add signal"""
-    timeline_signal = PyQt5.QtCore.pyqtSignal(str)
+class PlexRemote(QtCore.QObject, plexdevices.remote.Remote):
+    """subclass plexdevices.Remote and QtCore.QObject to add signal"""
+    timeline_signal = QtCore.pyqtSignal(str)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -60,7 +59,7 @@ class Remote(plexdesktop.components.ComponentWindow):
         self.remote.timeline_signal.connect(self.tl_handler)
         self.key = None
         self.name = name
-        self.picture = PyQt5.QtGui.QPixmap()
+        self.picture = QtGui.QPixmap()
 
         self.setWindowTitle('{} - remote'.format(player.name))
 
@@ -118,10 +117,10 @@ class Remote(plexdesktop.components.ComponentWindow):
         else:
             self.ui.lbl_title.setText(data.get('title', ''))
             self.ui.lbl_summary.setText(data.get('summary', ''))
-            self.updateImage(server.image(data['thumb']))
+            self.updateImage(server.image(data['thumb']).content)
 
     def updateImage(self, data=None):
         if data is not None:
             self.picture.loadFromData(data)
         w, h = self.ui.lbl_image.width(), self.ui.lbl_image.height()
-        self.ui.lbl_image.setPixmap(self.picture.scaled(w, h, Qt.KeepAspectRatio))
+        self.ui.lbl_image.setPixmap(self.picture.scaled(w, h, QtCore.Qt.KeepAspectRatio))

@@ -20,8 +20,7 @@ import sys
 import logging
 import logging.config
 
-import PyQt5.QtWidgets
-import PyQt5.QtGui
+from PyQt5 import QtWidgets, QtGui
 
 import plexdesktop.ui
 import plexdesktop.browser
@@ -32,9 +31,11 @@ import plexdesktop.sqlcache
 import plexdesktop.components
 
 
-def run(log_level=logging.INFO):
+def run(log_level=logging.DEBUG):
     # for cx_Freeze and requests ssl issues
-    os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(os.getcwd(), 'cacert.pem')
+    os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(os.getcwd(), 'resources', 'cacert.pem')
+
+    QtGui.QPixmapCache.setCacheLimit(100 * 1024)
 
     # Logging
     logging_config = {
@@ -88,12 +89,12 @@ def run(log_level=logging.INFO):
     except Exception:
         pass
     logger.info('Application Started')
-    app = PyQt5.QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
 
     s = plexdesktop.settings.Settings()
     plexdesktop.style.Style.Instance().theme(s.value('theme', 'dark'))
 
-    qfd = PyQt5.QtGui.QFontDatabase()
+    qfd = QtGui.QFontDatabase()
     qfd.addApplicationFont('resources/fonts/OpenSans-Regular.ttf')
     qfd.addApplicationFont('resources/fonts/OpenSans-Italic.ttf')
     qfd.addApplicationFont('resources/fonts/OpenSans-Bold.ttf')
@@ -110,8 +111,6 @@ def run(log_level=logging.INFO):
     cm.create_browser()
 
     exit_code = app.exec_()
-
-    plexdesktop.sqlcache.DB_THUMB.commit()
 
     sys.exit(exit_code)
 

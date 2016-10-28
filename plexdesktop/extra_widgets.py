@@ -16,8 +16,7 @@
 
 import queue
 
-import PyQt5.QtWidgets
-import PyQt5.QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 
 import plexdesktop.components
 import plexdesktop.style
@@ -28,22 +27,20 @@ import plexdesktop.workers
 import plexdesktop.ui.downloadwindow_ui
 import plexdesktop.ui.login_ui
 
-Qt = PyQt5.QtCore.Qt
-
 
 class DownloadManager(plexdesktop.components.ComponentWindow):
-    download = PyQt5.QtCore.pyqtSignal(queue.Queue)
+    download = QtCore.pyqtSignal(queue.Queue)
 
     def __init__(self, name, parent=None):
         super().__init__(name, parent)
         self.ui = plexdesktop.ui.downloadwindow_ui.Ui_DownloadWindow()
         self.ui.setupUi(self)
 
-        self.mutex = PyQt5.QtCore.QMutex()
+        self.mutex = QtCore.QMutex()
 
         self.setWindowTitle('Downloads')
-        self.setWindowFlags(Qt.Window)
-        self.spacer = PyQt5.QtWidgets.QSpacerItem(1, 1, PyQt5.QtWidgets.QSizePolicy.Expanding, PyQt5.QtWidgets.QSizePolicy.Expanding)
+        self.setWindowFlags(QtCore.Qt.Window)
+        self.spacer = QtWidgets.QSpacerItem(1, 1, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.layout.insertItem(-1, self.spacer)
         self.jobs = {}
         self.queue = queue.Queue()
@@ -84,20 +81,20 @@ class DownloadManager(plexdesktop.components.ComponentWindow):
         dialog.update_progress(job, val, rate)
 
 
-class FileDownload(PyQt5.QtWidgets.QProgressDialog):
-    update = PyQt5.QtCore.pyqtSignal(float)
-    paused = PyQt5.QtCore.pyqtSignal()
+class FileDownload(QtWidgets.QProgressDialog):
+    update = QtCore.pyqtSignal(float)
+    paused = QtCore.pyqtSignal()
 
     def __init__(self, *args, title='file', parent=None, **kwargs):
         super().__init__(*args, parent=parent, **kwargs)
         self.update.connect(self.setValue)
-        self.setWindowFlags(Qt.Widget)
+        self.setWindowFlags(QtCore.Qt.Widget)
 
-        self.pause = PyQt5.QtWidgets.QPushButton(self)
-        self.label = PyQt5.QtWidgets.QLabel(self)
+        self.pause = QtWidgets.QPushButton(self)
+        self.label = QtWidgets.QLabel(self)
         self.pause.pressed.connect(self.paused.emit)
         self.setLabel(self.label)
-        self.setSizePolicy(PyQt5.QtWidgets.QSizePolicy.Preferred, PyQt5.QtWidgets.QSizePolicy.Minimum)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
         self.setMaximumHeight(100)
         self.setMinimumHeight(100)
 
@@ -106,10 +103,10 @@ class FileDownload(PyQt5.QtWidgets.QProgressDialog):
         self.label.setText('{} {:,.1f} kbps'.format(job.item.title, rate / 1024))
 
 
-class HubSearch(PyQt5.QtWidgets.QLineEdit):
-    focus_in = PyQt5.QtCore.pyqtSignal()
-    hide_results = PyQt5.QtCore.pyqtSignal()
-    cancel = PyQt5.QtCore.pyqtSignal()
+class HubSearch(QtWidgets.QLineEdit):
+    focus_in = QtCore.pyqtSignal()
+    hide_results = QtCore.pyqtSignal()
+    cancel = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -117,21 +114,21 @@ class HubSearch(PyQt5.QtWidgets.QLineEdit):
            before registering widgets"""
         self.setObjectName('HubSearch')
 
-        search_action = PyQt5.QtWidgets.QAction(self)
+        search_action = QtWidgets.QAction(self)
         search_action.setObjectName('search_action')
-        close_action = PyQt5.QtWidgets.QAction(self)
+        close_action = QtWidgets.QAction(self)
         close_action.setObjectName('close_action')
         close_action.triggered.connect(self.cancel.emit)
         close_action.triggered.connect(self.clear)
 
-        self.addAction(search_action, PyQt5.QtWidgets.QLineEdit.LeadingPosition)
-        self.addAction(close_action, PyQt5.QtWidgets.QLineEdit.TrailingPosition)
+        self.addAction(search_action, QtWidgets.QLineEdit.LeadingPosition)
+        self.addAction(close_action, QtWidgets.QLineEdit.TrailingPosition)
 
         plexdesktop.style.Style.Instance().widget.register(search_action, 'glyphicons-search')
         plexdesktop.style.Style.Instance().widget.register(close_action, 'cancel')
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == QtCore.Qt.Key_Escape:
             self.clear()
             self.cancel.emit()
             event.accept()
@@ -139,8 +136,8 @@ class HubSearch(PyQt5.QtWidgets.QLineEdit):
             super().keyPressEvent(event)
 
 
-class TrackSelector(PyQt5.QtWidgets.QComboBox):
-    trackChanged = PyQt5.QtCore.pyqtSignal(str)
+class TrackSelector(QtWidgets.QComboBox):
+    trackChanged = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -168,7 +165,7 @@ class TrackSelector(PyQt5.QtWidgets.QComboBox):
         self.trackChanged.emit(tid)
 
 
-class GraphicsView(PyQt5.QtWidgets.QGraphicsView):
+class GraphicsView(QtWidgets.QGraphicsView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -176,13 +173,13 @@ class GraphicsView(PyQt5.QtWidgets.QGraphicsView):
 
     def wheelEvent(self, event):
         # ignore modified scroll events so the parent can use them
-        if event.modifiers() & Qt.ControlModifier:
+        if event.modifiers() & QtCore.Qt.ControlModifier:
             event.ignore()
         else:
             super().wheelEvent(event)
 
     def mousePressEvent(self, event):
-        # "any mouse or key events are ignored" http://doc.qt.io/qt-5/PyQt5.QtWidgets.qgraphicsview.html#interactive-prop
+        # "any mouse or key events are ignored" http://doc.qt.io/qt-5/QtWidgets.qgraphicsview.html#interactive-prop
         if self.isInteractive():
             super().mousePressEvent(event)
         else:
@@ -198,87 +195,87 @@ class GraphicsView(PyQt5.QtWidgets.QGraphicsView):
         event.ignore()
 
     def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
-            self.setDragMode(PyQt5.QtWidgets.QGraphicsView.NoDrag)
+        if event.key() == QtCore.Qt.Key_Space and not event.isAutoRepeat():
+            self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
             self.setInteractive(False)
-        elif event.key() == Qt.Key_Control:
+        elif event.key() == QtCore.Qt.Key_Control:
             self.setInteractive(False)
         else:
             super().keyReleaseEvent(event)
 
 
-class ManualServerDialog(PyQt5.QtWidgets.QDialog):
+class ManualServerDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Manual Add Server')
-        self.form = PyQt5.QtWidgets.QFormLayout(self)
-        self.secure = PyQt5.QtWidgets.QCheckBox()
-        self.address = PyQt5.QtWidgets.QLineEdit()
-        self.port = PyQt5.QtWidgets.QLineEdit('32400')
-        self.token = PyQt5.QtWidgets.QLineEdit()
-        self.form.addRow(PyQt5.QtWidgets.QLabel('HTTPS?'), self.secure)
-        self.form.addRow(PyQt5.QtWidgets.QLabel('Address'), self.address)
-        self.form.addRow(PyQt5.QtWidgets.QLabel('Port'), self.port)
-        self.form.addRow(PyQt5.QtWidgets.QLabel('Access Token (optional)'), self.token)
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
-            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.form = QtWidgets.QFormLayout(self)
+        self.secure = QtWidgets.QCheckBox()
+        self.address = QtWidgets.QLineEdit()
+        self.port = QtWidgets.QLineEdit('32400')
+        self.token = QtWidgets.QLineEdit()
+        self.form.addRow(QtWidgets.QLabel('HTTPS?'), self.secure)
+        self.form.addRow(QtWidgets.QLabel('Address'), self.address)
+        self.form.addRow(QtWidgets.QLabel('Port'), self.port)
+        self.form.addRow(QtWidgets.QLabel('Access Token (optional)'), self.token)
+        self.buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel, QtCore.Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
 
     def data(self):
-        return ('https' if self.secure.checkState() == Qt.Checked else 'http', self.address.text(), self.port.text(), self.token.text())
+        return ('https' if self.secure.checkState() == QtCore.Qt.Checked else 'http', self.address.text(), self.port.text(), self.token.text())
 
 
-class PreferencesObjectDialog(PyQt5.QtWidgets.QDialog):
+class PreferencesObjectDialog(QtWidgets.QDialog):
 
     def __init__(self, media_object, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Preferences')
-        self.form = PyQt5.QtWidgets.QFormLayout(self)
+        self.form = QtWidgets.QFormLayout(self)
         server = media_object.container.server
         settings = server.container(media_object.key)
         self.ids = []
         for item in settings['_children']:
             itype = item['type']
             if itype == 'bool':
-                input_widget = PyQt5.QtWidgets.QCheckBox()
-                input_widget.setCheckState(Qt.Checked if item['value'] == 'true' else Qt.Unchecked)
+                input_widget = QtWidgets.QCheckBox()
+                input_widget.setCheckState(QtCore.Qt.Checked if item['value'] == 'true' else QtCore.Qt.Unchecked)
             elif itype == 'enum':
-                input_widget = PyQt5.QtWidgets.QComboBox()
+                input_widget = QtWidgets.QComboBox()
                 input_widget.addItems(item['values'].split('|'))
                 input_widget.setCurrentIndex(int(item['value']))
             elif itype == 'text':
-                input_widget = PyQt5.QtWidgets.QLineEdit(item['value'])
+                input_widget = QtWidgets.QLineEdit(item['value'])
                 if item['secure'] == 'true':
-                    input_widget.setEchoMode(PyQt5.QtWidgets.QLineEdit.PasswordEchoOnEdit)
+                    input_widget.setEchoMode(QtWidgets.QLineEdit.PasswordEchoOnEdit)
             else:
-                input_widget = PyQt5.QtWidgets.QLabel('...')
-            self.form.addRow(PyQt5.QtWidgets.QLabel(item['label']), input_widget)
+                input_widget = QtWidgets.QLabel('...')
+            self.form.addRow(QtWidgets.QLabel(item['label']), input_widget)
             self.ids.append((item['id'], input_widget))
 
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
-            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        self.buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel, QtCore.Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
-        if self.exec_() == PyQt5.QtWidgets.QDialog.Accepted:
+        if self.exec_() == QtWidgets.QDialog.Accepted:
             media_object.container.server.request(media_object.key + '/set', params=self.extract_values())
 
     def extract_values(self):
         values = {}
         for pid, widget in self.ids:
-            if isinstance(widget, PyQt5.QtWidgets.QLineEdit):
+            if isinstance(widget, QtWidgets.QLineEdit):
                 values[pid] = widget.text()
-            elif isinstance(widget, PyQt5.QtWidgets.QComboBox):
+            elif isinstance(widget, QtWidgets.QComboBox):
                 values[pid] = widget.currentIndex()
-            elif isinstance(widget, PyQt5.QtWidgets.QCheckBox):
-                values[pid] = 'true' if widget.checkState() == Qt.Checked else 'false'
+            elif isinstance(widget, QtWidgets.QCheckBox):
+                values[pid] = 'true' if widget.checkState() == QtCore.Qt.Checked else 'false'
         return values
 
 
-class LoginDialog(PyQt5.QtWidgets.QDialog):
+class LoginDialog(QtWidgets.QDialog):
     def __init__(self, session=None, parent=None):
         super().__init__(parent)
         self.ui = plexdesktop.ui.login_ui.Ui_Login()
@@ -290,38 +287,38 @@ class LoginDialog(PyQt5.QtWidgets.QDialog):
         return (self.ui.username.text(), self.ui.password.text())
 
 
-class SettingsDialog(PyQt5.QtWidgets.QDialog):
+class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         s = plexdesktop.settings.Settings()
         self.setWindowTitle('Preferences')
-        self.form = PyQt5.QtWidgets.QFormLayout(self)
+        self.form = QtWidgets.QFormLayout(self)
 
-        i = PyQt5.QtWidgets.QComboBox()
+        i = QtWidgets.QComboBox()
         i.addItems(plexdesktop.style.Style.Instance().themes)
         i.setCurrentIndex(i.findText(s.value('theme')))
-        self.form.addRow(PyQt5.QtWidgets.QLabel('theme'), i)
+        self.form.addRow(QtWidgets.QLabel('theme'), i)
 
-        bf = PyQt5.QtWidgets.QSpinBox()
+        bf = QtWidgets.QSpinBox()
         bf.setValue(int(s.value('browser_font', 9)))
-        self.form.addRow(PyQt5.QtWidgets.QLabel('browser font size'), bf)
+        self.form.addRow(QtWidgets.QLabel('browser font size'), bf)
 
-        icon_size = PyQt5.QtWidgets.QLineEdit(str(s.value('thumb_size', 240)))
-        icon_size.setValidator(PyQt5.QtGui.QIntValidator(0, 300))
-        self.form.addRow(PyQt5.QtWidgets.QLabel('thumbnail size'), icon_size)
+        icon_size = QtWidgets.QLineEdit(str(s.value('thumb_size', 240)))
+        icon_size.setValidator(QtGui.QIntValidator(0, 300))
+        self.form.addRow(QtWidgets.QLabel('thumbnail size'), icon_size)
 
-        widget_player = PyQt5.QtWidgets.QCheckBox()
-        widget_player.setCheckState(Qt.Checked if bool(int(s.value('widget_player', 0))) else Qt.Unchecked)
-        self.form.addRow(PyQt5.QtWidgets.QLabel('use widget player'), widget_player)
+        widget_player = QtWidgets.QCheckBox()
+        widget_player.setCheckState(QtCore.Qt.Checked if bool(int(s.value('widget_player', 0))) else QtCore.Qt.Unchecked)
+        self.form.addRow(QtWidgets.QLabel('use widget player'), widget_player)
 
-        self.buttons = PyQt5.QtWidgets.QDialogButtonBox(
-            PyQt5.QtWidgets.QDialogButtonBox.Ok | PyQt5.QtWidgets.QDialogButtonBox.Cancel,
-            Qt.Horizontal, self)
+        self.buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
+            QtCore.Qt.Horizontal, self)
         self.form.addRow(self.buttons)
         self.buttons.rejected.connect(self.reject)
         self.buttons.accepted.connect(self.accept)
 
-        if self.exec_() == PyQt5.QtWidgets.QDialog.Accepted:
+        if self.exec_() == QtWidgets.QDialog.Accepted:
             # s = Settings()
             theme = i.currentText()
             s.setValue('theme', theme)
@@ -331,4 +328,4 @@ class SettingsDialog(PyQt5.QtWidgets.QDialog):
 
             s.setValue('thumb_size', int(icon_size.text()))
 
-            s.setValue('widget_player', 1 if widget_player.checkState() == Qt.Checked else 0)
+            s.setValue('widget_player', 1 if widget_player.checkState() == QtCore.Qt.Checked else 0)

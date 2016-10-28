@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'plexdesktop\ui\photo_viewer.ui'
 #
-# Created by: PyQt5 UI code generator 5.6
+# Created by: PyQt5 UI code generator 5.7
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -19,6 +19,9 @@ class Ui_PhotoViewer(object):
         self.verticalLayout.setSpacing(0)
         self.verticalLayout.setObjectName("verticalLayout")
         self.view = GraphicsView(self.centralwidget)
+        self.view.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.view.setFrameShadow(QtWidgets.QFrame.Plain)
+        self.view.setLineWidth(0)
         self.view.setInteractive(False)
         self.view.setRenderHints(QtGui.QPainter.Antialiasing|QtGui.QPainter.SmoothPixmapTransform|QtGui.QPainter.TextAntialiasing)
         self.view.setDragMode(QtWidgets.QGraphicsView.NoDrag)

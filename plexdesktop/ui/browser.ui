@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>707</width>
-    <height>389</height>
+    <width>639</width>
+    <height>536</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -34,91 +34,21 @@
      <widget class="HubSearch" name="hub_search"/>
     </item>
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout_2">
-      <item>
-       <widget class="QLabel" name="lbl_path">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <spacer name="horizontalSpacer_3">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item>
-       <widget class="QProgressBar" name="indicator">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
-        <property name="maximum">
-         <number>0</number>
-        </property>
-        <property name="value">
-         <number>-1</number>
-        </property>
-        <property name="textVisible">
-         <bool>false</bool>
-        </property>
-        <property name="invertedAppearance">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QComboBox" name="shortcuts">
-        <property name="minimumSize">
-         <size>
-          <width>100</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="font">
-         <font>
-          <pointsize>7</pointsize>
-         </font>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QComboBox" name="sort">
-        <property name="font">
-         <font>
-          <pointsize>7</pointsize>
-         </font>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
-    <item>
-     <widget class="ListView" name="list">
+     <widget class="BrowserTabs" name="tabs">
       <property name="contextMenuPolicy">
        <enum>Qt::CustomContextMenu</enum>
+      </property>
+      <property name="tabPosition">
+       <enum>QTabWidget::North</enum>
+      </property>
+      <property name="tabsClosable">
+       <bool>true</bool>
+      </property>
+      <property name="movable">
+       <bool>true</bool>
+      </property>
+      <property name="tabBarAutoHide">
+       <bool>false</bool>
       </property>
      </widget>
     </item>
@@ -161,6 +91,34 @@
        </widget>
       </item>
       <item>
+       <widget class="QProgressBar" name="indicator">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>30</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="maximum">
+         <number>0</number>
+        </property>
+        <property name="value">
+         <number>-1</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+        <property name="invertedAppearance">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="horizontalSpacer_2">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -172,6 +130,15 @@
          </size>
         </property>
        </spacer>
+      </item>
+      <item>
+       <widget class="QComboBox" name="sort">
+        <property name="font">
+         <font>
+          <pointsize>7</pointsize>
+         </font>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QSlider" name="zoom">
@@ -247,7 +214,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>707</width>
+     <width>639</width>
      <height>21</height>
     </rect>
    </property>
@@ -257,6 +224,8 @@
     </property>
     <addaction name="actionNew_Browser"/>
     <addaction name="actionQuit"/>
+    <addaction name="actionNew_Tab"/>
+    <addaction name="actionClose_Tab"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
     <property name="title">
@@ -265,8 +234,6 @@
     <addaction name="actionFind"/>
     <addaction name="actionPreferences"/>
     <addaction name="actionReload_Stylesheet"/>
-    <addaction name="actionTrim_Image_Cache"/>
-    <addaction name="actionTrim_Thumb_Cache"/>
    </widget>
    <widget class="QMenu" name="menuSession">
     <property name="title">
@@ -278,9 +245,16 @@
      </property>
      <addaction name="separator"/>
     </widget>
+    <widget class="QMenu" name="menuServers">
+     <property name="title">
+      <string>Servers</string>
+     </property>
+     <addaction name="separator"/>
+    </widget>
     <addaction name="actionLogin_Refresh"/>
     <addaction name="actionInfo"/>
     <addaction name="actionLogout"/>
+    <addaction name="menuServers"/>
     <addaction name="menuRemotes"/>
     <addaction name="actionAdd_Server"/>
     <addaction name="actionRefresh_Devices"/>
@@ -298,8 +272,15 @@
     </property>
     <addaction name="actionDownloads"/>
    </widget>
+   <widget class="QMenu" name="menu_View">
+    <property name="title">
+     <string>&amp;View</string>
+    </property>
+    <addaction name="actionBookmarks_Bar"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
+   <addaction name="menu_View"/>
    <addaction name="menuSession"/>
    <addaction name="menuWindow"/>
    <addaction name="menu_Help"/>
@@ -324,6 +305,7 @@
     <bool>false</bool>
    </attribute>
    <addaction name="actionBack"/>
+   <addaction name="actionForward"/>
    <addaction name="actionRefresh"/>
    <addaction name="actionFind"/>
    <addaction name="actionView_Mode"/>
@@ -343,7 +325,7 @@
     <bool>false</bool>
    </property>
    <attribute name="toolBarArea">
-    <enum>LeftToolBarArea</enum>
+    <enum>TopToolBarArea</enum>
    </attribute>
    <attribute name="toolBarBreak">
     <bool>false</bool>
@@ -384,6 +366,17 @@
      </item>
     </layout>
    </widget>
+  </widget>
+  <widget class="QToolBar" name="bookmarksToolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>true</bool>
+   </attribute>
   </widget>
   <action name="actionPreferences">
    <property name="text">
@@ -570,7 +563,7 @@
     <string>Add Shortcut</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+=</string>
+    <string>Ctrl+D</string>
    </property>
   </action>
   <action name="actionView_Mode">
@@ -597,13 +590,37 @@
     <string>Ctrl+N</string>
    </property>
   </action>
+  <action name="actionBookmarks_Bar">
+   <property name="text">
+    <string>Bookmarks Bar</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+B</string>
+   </property>
+  </action>
+  <action name="actionNew_Tab">
+   <property name="text">
+    <string>New Tab</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="actionClose_Tab">
+   <property name="text">
+    <string>Close Tab</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+W</string>
+   </property>
+  </action>
+  <action name="actionForward">
+   <property name="text">
+    <string>Forward</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>ListView</class>
-   <extends>QListWidget</extends>
-   <header>plexdesktop.browserlist.h</header>
-  </customwidget>
   <customwidget>
    <class>HubSearch</class>
    <extends>QLineEdit</extends>
@@ -613,6 +630,12 @@
    <class>TreeView</class>
    <extends>QTreeView</extends>
    <header>plexdesktop.hubtree.h</header>
+  </customwidget>
+  <customwidget>
+   <class>BrowserTabs</class>
+   <extends>QTabWidget</extends>
+   <header>plexdesktop.browserlist.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources/>

@@ -14,9 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import queue
 import plexdevices
 
-import PyQt5.QtWidgets
+from PyQt5 import QtWidgets
 
 
 def timestamp_from_ms(milliseconds, minimal=False):
@@ -28,7 +29,7 @@ def timestamp_from_ms(milliseconds, minimal=False):
 
 
 def msg_box(message, title='plexdesktop'):
-    msg = PyQt5.QtWidgets.QMessageBox()
+    msg = QtWidgets.QMessageBox()
     msg.setText(message)
     msg.setWindowTitle(title)
     msg.exec_()
@@ -91,7 +92,7 @@ def hub_title(media):
 
 
 class Location(object):
-    def __init__(self, key, sort=0, params=None):
+    def __init__(self, key, sort=None, params=None):
         self.key = key
         self.sort = sort
         self.params = params
@@ -154,3 +155,19 @@ class Singleton(object):
 
     def __instancecheck__(self, inst):
         return isinstance(inst, self._decorated)
+
+
+class Queue(queue.Queue):
+    """
+    A custom queue subclass that provides a :meth:`clear` method.
+    """
+    def clear(self):
+        with self.mutex:
+            unfinished = self.unfinished_tasks - len(self.queue)
+            if unfinished <= 0:
+                if unfinished < 0:
+                    raise ValueError('task_done() called too many times')
+                self.all_tasks_done.notify_all()
+            self.unfinished_tasks = unfinished
+            self.queue.clear()
+            self.not_full.notify_all()

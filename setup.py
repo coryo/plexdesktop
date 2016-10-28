@@ -16,9 +16,13 @@ if sys.platform == "win32":
 
 options = {
     'build_exe': {
+        'packages': ['sqlite3'],
+        'excludes': ['tkinter'],
         "include_files": [
             (requests.certs.where(), 'cacert.pem'),
-            ('mpv-1.dll', 'mpv-1.dll')
+            #('mpv-1.dll', 'mpv-1.dll'),
+            ('mpv', 'mpv'),
+            ('resources', 'resources'),
         ],
         'optimize': 2
     }

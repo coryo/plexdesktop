@@ -14,18 +14,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import PyQt5.QtCore
-import PyQt5.QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 
-class About(PyQt5.QtWidgets.QTextBrowser):
+class About(QtWidgets.QTextBrowser):
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
         self.setWindowTitle('About')
         self.setOpenExternalLinks(True)
-        file = PyQt5.QtCore.QFile('resources/about.html')
-        file.open(PyQt5.QtCore.QFile.ReadOnly)
+        file = QtCore.QFile('resources/about.html')
+        file.open(QtCore.QFile.ReadOnly)
         html = bytes(file.readAll()).decode('utf-8')
         self.insertHtml(html)

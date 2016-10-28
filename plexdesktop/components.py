@@ -17,8 +17,7 @@
 import logging
 import uuid
 
-import PyQt5.QtCore
-import PyQt5.QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 import plexdesktop.browser
 import plexdesktop.utils
@@ -26,8 +25,8 @@ import plexdesktop.utils
 logger = logging.getLogger('plexdesktop')
 
 
-class ComponentObject(PyQt5.QtCore.QObject):
-    closed = PyQt5.QtCore.pyqtSignal(str)
+class ComponentObject(QtCore.QObject):
+    closed = QtCore.pyqtSignal(str)
 
     def __init__(self, name, parent=None):
         super().__init__(parent)
@@ -38,8 +37,8 @@ class ComponentObject(PyQt5.QtCore.QObject):
         self.closed.emit(self.name)
 
 
-class ComponentWindow(PyQt5.QtWidgets.QMainWindow):
-    closed = PyQt5.QtCore.pyqtSignal(str)
+class ComponentWindow(QtWidgets.QMainWindow):
+    closed = QtCore.pyqtSignal(str)
 
     def __init__(self, name, parent=None):
         super().__init__(parent)
@@ -51,7 +50,7 @@ class ComponentWindow(PyQt5.QtWidgets.QMainWindow):
 
 
 @plexdesktop.utils.Singleton
-class ComponentManager(PyQt5.QtCore.QObject):
+class ComponentManager(QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,17 +76,17 @@ class ComponentManager(PyQt5.QtCore.QObject):
     def get(self, name):
         return self.components.get(name, None)
 
+    def players(self):
+        return [v for k, v in self.components.items() if k.startswith('MPVPlayer')]
+
     def create_component(self, cls, name=None, **kwargs):
         component = cls(name=name if name is not None else
                         '{}-{}'.format(cls.__name__, uuid.uuid4().hex), **kwargs)
         self.add(component)
         return component
 
-    @PyQt5.QtCore.pyqtSlot()
+    @QtCore.pyqtSlot()
     def create_browser(self):
         browser = self.create_component(plexdesktop.browser.Browser)
         browser.show()
         return browser
-
-
-# COMPONENT_MANAGER = ComponentManager()

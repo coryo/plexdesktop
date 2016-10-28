@@ -16,26 +16,27 @@
 
 import logging
 import pickle
+import base64
 
 import requests
 
 import plexdevices
 
-import PyQt5.QtCore
+from PyQt5 import QtCore
 
 import plexdesktop.settings
 import plexdesktop.utils
-from plexdesktop.sqlcache import DB_THUMB
+import plexdesktop.sqlcache
 
 logger = logging.getLogger('plexdesktop')
 
 
-class SessionManager(PyQt5.QtCore.QObject):
-    working = PyQt5.QtCore.pyqtSignal()
-    done = PyQt5.QtCore.pyqtSignal(bool, str)
-    active = PyQt5.QtCore.pyqtSignal(bool)
-    shortcuts_changed = PyQt5.QtCore.pyqtSignal()
-    shortcuts_loaded = PyQt5.QtCore.pyqtSignal(int)
+class SessionManager(QtCore.QObject):
+    working = QtCore.pyqtSignal()
+    done = QtCore.pyqtSignal(bool, str)
+    active = QtCore.pyqtSignal(bool)
+    shortcuts_changed = QtCore.pyqtSignal()
+    shortcuts_loaded = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,7 +56,9 @@ class SessionManager(PyQt5.QtCore.QObject):
     def load_session(self):
         settings = plexdesktop.settings.Settings()
         try:
-            self.session = pickle.loads(settings.value('session'))
+            # with open('session.pickle', 'rb') as f:
+            #     self.session = pickle.load(f)
+            self.session = pickle.loads(base64.b64decode(settings.value('session').encode()))
             self.user = self.session.get_user_by_id(settings.value('user'))
             self.current_server = self.session.get_server_by_id(settings.value('last_server'))
             self.active.emit(True)
@@ -67,7 +70,9 @@ class SessionManager(PyQt5.QtCore.QObject):
         settings = plexdesktop.settings.Settings()
         try:
             logger.info('SessionManager: saving session')
-            settings.setValue('session', pickle.dumps(self.session))
+            # with open('session.pickle', 'wb') as f:
+            #     pickle.dump(self.session, f)
+            settings.setValue('session', base64.b64encode(pickle.dumps(self.session)).decode())
         except Exception as e:
             logger.error('SessionManager: save_session: ' + str(e))
 
@@ -121,18 +126,20 @@ class SessionManager(PyQt5.QtCore.QObject):
 
     def cache_user_thumbs(self):
         logger.info('SessionManager: refreshing user thumbs')
-        for user in self.session.users:
-            thumb = DB_THUMB[user.thumb]
-            if not thumb:
+        with plexdesktop.sqlcache.db_thumb() as cache:
+            for user in self.session.users:
+                if user.thumb in cache:
+                    continue
                 try:
+                    logger.info('getting thumb {}'.format(user.thumb))
                     r = requests.get(user.thumb)
                 except Exception:
                     logger.error(
                         'SessionManager: cache_user_thumbs {}'.format(user.thumb))
-                if r.ok:
-                    img_data = r.content
-                    DB_THUMB[user.thumb] = img_data
-        DB_THUMB.commit()
+                else:
+                    if r.ok:
+                        img_data = r.content
+                        cache[user.thumb] = img_data
 
     def delete_session(self):
         settings = plexdesktop.settings.Settings()
@@ -180,15 +187,18 @@ class SessionManager(PyQt5.QtCore.QObject):
             self.done.emit(True, '')
 
 
-class Shortcuts(PyQt5.QtCore.QObject):
-    shortcuts_changed = PyQt5.QtCore.pyqtSignal()
-    shortcuts_loaded = PyQt5.QtCore.pyqtSignal(int)
+class Shortcuts(QtCore.QObject):
+    shortcuts_changed = QtCore.pyqtSignal()
+    shortcuts_loaded = QtCore.pyqtSignal(int)
 
     def __init__(self, server, parent=None):
         super().__init__(parent)
         self.server = server
         self.shortcuts = {}
         self.s = plexdesktop.settings.Settings()
+
+    def __len__(self):
+        return len(self.shortcuts)
 
     def __contains__(self, location):
         return location in self.shortcuts.values()

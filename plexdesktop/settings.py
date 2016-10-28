@@ -14,9 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import PyQt5.QtCore
+from PyQt5 import QtCore
 
 
-class Settings(PyQt5.QtCore.QSettings):
+class Settings(QtCore.QSettings):
     def __init__(self, parent=None):
-        super().__init__('settings.ini', PyQt5.QtCore.QSettings.IniFormat, parent)
+        super().__init__('settings.ini', QtCore.QSettings.IniFormat, parent)
